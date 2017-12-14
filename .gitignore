@@ -16,6 +16,7 @@ backup/
 darknet
 .fuse*
 *.weights
+*.pyc
 
 # OS Generated #
 .DS_Store*
