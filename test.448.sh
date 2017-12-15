@@ -1,1 +1,1 @@
-./darknet yolo test cfg/yolo.cfg backup/yolo_final.weights 
+./darknet yolo test cfg/yolo.cfg yolov1_448.weights
