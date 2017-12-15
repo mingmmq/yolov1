@@ -9,17 +9,19 @@ For questions or issues please use the [Google Group](https://groups.google.com/
 
 
 # yolov1
-This version is checkout from 
+To get an unbroken yolov1, you need to revert to some version of the current darknet
 
-```git checkout c71bff69eaf1e458850ab78a32db8aa25fee17dc```
+```
+git clone https://github.com/pjreddie/darknet.git
+git checkout c71bff69eaf1e458850ab78a32db8aa25fee17dc
+```
 
 More informaiton, please refer to [This issue](https://github.com/pjreddie/darknet/issues/99) 
 
-##How to train yolov1
-The extraction.conv.weights can be fetched from:
+##How to train yolov1 in the project
+First, the extraction.conv.weights is required, which can be fetched from:
 
 ```wget http://pjreddie.com/media/files/extraction.conv.weights```
-
 
 To train the 448*448 resolution version:
 
