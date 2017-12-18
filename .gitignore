@@ -11,12 +11,13 @@ opencv/
 convnet/
 decaf/
 submission/
-results/
 backup/
 darknet
 .fuse*
 *.weights
 *.pyc
+*.pkl
+*.txt
 
 # OS Generated #
 .DS_Store*

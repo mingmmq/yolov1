@@ -196,6 +196,99 @@ void validate_yolo(char *cfgfile, char *weightfile)
     fprintf(stderr, "Total Detection Time: %f Seconds\n", (double)(time(0) - start));
 }
 
+
+
+void validate_yolo_grid(char *cfgfile, char *weightfile)
+{
+    network net = parse_network_cfg(cfgfile);
+    if(weightfile){
+        load_weights(&net, weightfile);
+    }
+    set_batch_network(&net, 1);
+    fprintf(stderr, "Learning Rate: %g, Momentum: %g, Decay: %g\n", net.learning_rate, net.momentum, net.decay);
+    srand(time(0));
+
+    char *base = "results/comp4_det_test_";
+    //list *plist = get_paths("data/voc.2007.test");
+    list *plist = get_paths("/home/min/data/2007_test.txt");
+    //list *plist = get_paths("data/voc.2012.test");
+    char **paths = (char **)list_to_array(plist);
+
+    layer l = net.layers[net.n-1];
+    int classes = l.classes;
+
+    int j;
+    FILE **fps = calloc(classes, sizeof(FILE *));
+    for(j = 0; j < classes; ++j){
+        char buff[1024];
+        snprintf(buff, 1024, "%s%s.txt", base, voc_names[j]);
+        fps[j] = fopen(buff, "w");
+    }
+    box *boxes = calloc(l.side*l.side*l.n, sizeof(box));
+    float **probs = calloc(l.side*l.side*l.n, sizeof(float *));
+    for(j = 0; j < l.side*l.side*l.n; ++j) probs[j] = calloc(classes, sizeof(float *));
+
+    int m = plist->size;
+    int i=0;
+    int t;
+
+    float thresh = .001;
+    int nms = 1;
+    float iou_thresh = .5;
+
+    int nthreads = 8;
+    image *val = calloc(nthreads, sizeof(image));
+    image *val_resized = calloc(nthreads, sizeof(image));
+    image *buf = calloc(nthreads, sizeof(image));
+    image *buf_resized = calloc(nthreads, sizeof(image));
+    pthread_t *thr = calloc(nthreads, sizeof(pthread_t));
+
+    load_args args = {0};
+    args.w = net.w;
+    args.h = net.h;
+    args.type = IMAGE_DATA;
+
+    for(t = 0; t < nthreads; ++t){
+        args.path = paths[i+t];
+        args.im = &buf[t];
+        args.resized = &buf_resized[t];
+        thr[t] = load_data_in_thread(args);
+    }
+    time_t start = time(0);
+    for(i = nthreads; i < m+nthreads; i += nthreads){
+        fprintf(stderr, "%d\n", i);
+        for(t = 0; t < nthreads && i+t-nthreads < m; ++t){
+            pthread_join(thr[t], 0);
+            val[t] = buf[t];
+            val_resized[t] = buf_resized[t];
+        }
+        for(t = 0; t < nthreads && i+t < m; ++t){
+            args.path = paths[i+t];
+            args.im = &buf[t];
+            args.resized = &buf_resized[t];
+            thr[t] = load_data_in_thread(args);
+        }
+        for(t = 0; t < nthreads && i+t-nthreads < m; ++t){
+            char *path = paths[i+t-nthreads];
+            char *id = basecfg(path);
+            float *X = val_resized[t].data;
+            network_predict(net, X);
+            int w = val[t].w;
+            int h = val[t].h;
+            //todo 1 keep all the predictions
+            get_detection_boxes(l, w, h, thresh, probs, boxes, 0);
+            //todo 2 remove the nms part, instead we are using cardinality
+            //if (nms) do_nms_sort(boxes, probs, l.side*l.side*l.n, classes, iou_thresh);
+            //todo 3: save the result file not change
+            print_yolo_detections(fps, id, boxes, probs, l.side*l.side*l.n, classes, w, h);
+            free(id);
+            free_image(val[t]);
+            free_image(val_resized[t]);
+        }
+    }
+    fprintf(stderr, "Total Detection Time: %f Seconds\n", (double)(time(0) - start));
+}
+
 void validate_yolo_recall(char *cfgfile, char *weightfile)
 {
     network net = parse_network_cfg(cfgfile);
@@ -351,6 +444,6 @@ void run_yolo(int argc, char **argv)
     else if(0==strcmp(argv[2], "train")) train_yolo(cfg, weights);
     else if(0==strcmp(argv[2], "valid")) validate_yolo(cfg, weights);
     else if(0==strcmp(argv[2], "recall")) validate_yolo_recall(cfg, weights);
-    else if(0==strcmp(argv[2], "gird")) validate_yolo_grid(cfg, weights);
+    else if(0==strcmp(argv[2], "grid")) validate_yolo_grid(cfg, weights);
     else if(0==strcmp(argv[2], "demo")) demo(cfg, weights, thresh, cam_index, filename, voc_names, 20, frame_skip, prefix);
 }

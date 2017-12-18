@@ -241,11 +241,16 @@ void get_detection_boxes(layer l, int w, int h, float thresh, float **probs, box
             for(j = 0; j < l.classes; ++j){
                 int class_index = i*l.classes;
                 float prob = scale*predictions[class_index+j];
-                probs[index][j] = (prob > thresh) ? prob : 0;
+                //todo 1: remove the next line to keep all the probilities, and move the next line up
+                //probs[index][j] = (prob > thresh) ? prob : 0;
+                //todo 2: all the probs will be saved
+                probs[index][j] = prob;
+
             }
-            if(only_objectness){
-                probs[index][0] = scale;
-            }
+
+//            if(only_objectness){
+//                probs[index][0] = scale;
+//            }
         }
     }
 }
