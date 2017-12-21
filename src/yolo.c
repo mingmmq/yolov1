@@ -208,7 +208,7 @@ void validate_yolo_grid(char *cfgfile, char *weightfile)
     fprintf(stderr, "Learning Rate: %g, Momentum: %g, Decay: %g\n", net.learning_rate, net.momentum, net.decay);
     srand(time(0));
 
-    char *base = "results/comp4_det_test_";
+    char *base = "results_grid/comp4_det_test_";
     //list *plist = get_paths("data/voc.2007.test");
     list *plist = get_paths("/home/min/data/2007_test.txt");
     //list *plist = get_paths("data/voc.2012.test");
@@ -276,7 +276,7 @@ void validate_yolo_grid(char *cfgfile, char *weightfile)
             int w = val[t].w;
             int h = val[t].h;
             //todo 1 keep all the predictions
-            get_detection_boxes(l, w, h, thresh, probs, boxes, 0);
+            get_detection_boxes_nonms(l, w, h, thresh, probs, boxes, 0);
             //todo 2 remove the nms part, instead we are using cardinality
             //if (nms) do_nms_sort(boxes, probs, l.side*l.side*l.n, classes, iou_thresh);
             //todo 3: save the result file not change

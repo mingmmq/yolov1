@@ -101,7 +101,7 @@ def generate_prediction(thresh):
     keylist.sort()
 
     for key in keylist:
-        print(key, result_table[key])
+        # print(key, result_table[key])
         img_names.append("{}.jpg".format(key))
         labels.append(result_table[key])
 
@@ -136,11 +136,16 @@ if __name__ == '__main__':
     import sys
     thresh = float(sys.argv[1])
 
-    # generate_prediction(thresh)
 
     target_file =  "test_grid_voc2007_grid_7.csv"
     pred_file = "yolo_grid_ground_truth_max.csv"
 
-    generateResult(pred_file, target_file)
+    # todo comment this in and out to run the thresh detection on the nms data
+    for thresh in np.arange(0.1, 1, 0.1):
+        generate_prediction(thresh)
+        print("thresh: {}".format(thresh))
+        pred_file = "yolo_grid_thresh{}.csv".format(thresh)
+
+        generateResult(pred_file, target_file)
 
     pass

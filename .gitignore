@@ -18,6 +18,7 @@ darknet
 *.pyc
 *.pkl
 *.txt
+.idea\
 
 # OS Generated #
 .DS_Store*
