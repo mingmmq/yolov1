@@ -10,12 +10,13 @@
 #include "opencv2/highgui/highgui_c.h"
 #endif
 
-char *voc_names[] = {"aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow", "diningtable", "dog", "horse", "motorbike", "person", "pottedplant", "sheep", "sofa", "train", "tvmonitor"};
+char *voc_names[] = {"aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow",
+                     "diningtable", "dog", "horse", "motorbike", "person", "pottedplant", "sheep", "sofa", "train", "tvmonitor"};
 
 void train_yolo(char *cfgfile, char *weightfile)
 {
-    char *train_images = "/home/min/data/train.txt";
-    char *backup_directory = "./backup/";
+    char *train_images = "/home/qianminming/data/pascal/2007_train.txt";
+    char *backup_directory = "./backup_obj/";
     srand(time(0));
     char *base = basecfg(cfgfile);
     printf("%s\n", base);
@@ -40,6 +41,10 @@ void train_yolo(char *cfgfile, char *weightfile)
     //int N = plist->size;
     char **paths = (char **)list_to_array(plist);
 
+//    for (int j = 0; j < 100; ++j) {
+//        printf("%s\r\n", *paths ++);
+//    }
+
     load_args args = {0};
     args.w = net.w;
     args.h = net.h;
@@ -57,15 +62,18 @@ void train_yolo(char *cfgfile, char *weightfile)
     args.saturation = net.saturation;
     args.hue = net.hue;
 
+    //start new thread to load all th data
     pthread_t load_thread = load_data_in_thread(args);
+
     clock_t time;
     //while(i*imgs < N*120){
     while(get_current_batch(net) < net.max_batches){
         i += 1;
         time=clock();
+        //waiting for the loading thread, then continue
         pthread_join(load_thread, 0);
         train = buffer;
-        load_thread = load_data_in_thread(args);
+        load_thread = load_data_in_thread(args);    //在计算的时候，又用thread重新再load了
 
         printf("Loaded: %lf seconds\n", sec(clock()-time));
 

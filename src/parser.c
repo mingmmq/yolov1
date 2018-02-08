@@ -305,6 +305,10 @@ detection_layer parse_detection(list *options, size_params params)
     layer.jitter = option_find_float(options, "jitter", .2);
     layer.random = option_find_int_quiet(options, "random", 0);
     layer.reorg = option_find_int_quiet(options, "reorg", 0);
+
+    //added to check what happens here
+    printf("");
+
     return layer;
 }
 

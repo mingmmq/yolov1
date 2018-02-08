@@ -15,7 +15,7 @@ import os, sys, argparse
 import numpy as np
 import cPickle
 
-from voc_eval import voc_eval
+from voc_eval_grid import voc_eval
 
 def parse_args():
     """
@@ -62,7 +62,7 @@ def show_pr_curve(precision, recall, gt_prec, gt_rec, cat):
     plt.ylim([0.0, 1.05])
     plt.xlim([0.0, 1.0])
     plt.title('Precision-Recall curve vs Cardinality in YOLOv1 with 7*7 grid')
-    plt.plot(gt_rec, gt_prec, marker='x', color='r')
+    plt.plot(gt_prec, gt_rec, marker='x', color='r')
     plt.savefig('plots/{}.png'.format(cat))
 
     pass
@@ -86,62 +86,63 @@ def do_python_eval(devkit_path, year, image_set, classes, output_dir = 'results'
     print 'VOC07 metric? ' + ('Yes' if use_07_metric else 'No')
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
-    precs =[]
-    recs = []
-
-    stps = []
-    sfps = []
-    snpos = []
+    tp_sums =[]
+    fp_sums = []
+    nposs = []
     for i, cls in enumerate(classes):
         if cls == '__background__':
             continue
         filename = get_voc_results_file_template(image_set, output_dir).format(cls)
-        tps, fps, npos, ap = voc_eval(
+        tp_sum, fp_sum, npos = voc_eval(
             filename, annopath, imagesetfile, cls, cachedir, ovthresh=0.5,
             use_07_metric=use_07_metric)
-        aps += [ap]
-
-        stps += [tps]
-        sfps += [fps]
-        snpos += [npos]
+        # aps += [ap]
 
         # bit add up
-        # precs += [prec]
-        # recs += [rec]
+        tp_sums += [tp_sum]
+        fp_sums += [fp_sum]
+        nposs += [npos]
 
-        print('AP for {} = {:.4f}'.format(cls, ap))
+
+        # print('AP for {} = {:.4f}'.format(cls, ap))
         # print('precs for {}: {}'.format(cls, str(prec)))
         # print('recs for {}: {}'.format(cls, str(rec)))
 
         # with open(os.path.join(output_dir, cls + '_pr.pkl'), 'w') as f:
         #     cPickle.dump({'rec': rec, 'prec': prec, 'ap': ap}, f)
 
-    sum_tps = np.sum(stps, axis=0)
-    sum_fps = np.sum(sfps, axis=0)
-    sum_npos = np.sum(snpos)
-    sum_npos = [sum_npos] * 100
+    # print('mean prec={},\nmean rec={}').format(mean_prec, mean_rec)
 
-    recs = np.divide(sum_tps , sum_npos)
-    precs = np.divide(sum_tps, [sum(x) for x in zip(sum_tps, sum_fps)])
+    # show_pr_curve(mean_prec, mean_rec, 0, 0, "all")
 
-    # mean_prec = np.mean(precs, axis=0)
-    # mean_rec = np.mean(recs, axis=0)
-    print('mean prec={},\nmean rec={}').format(precs, recs)
+    # print('Mean AP = {:.4f}'.format(np.mean(aps)))
 
-    show_pr_curve(precs, recs, 0.6316, 0.6971, "together")
-    print('Mean AP = {:.4f}'.format(np.mean(aps)))
-    print('~~~~~~~~')
-    print('Results:')
-    for ap in aps:
-        print('{:.3f}'.format(ap))
-    print('{:.3f}'.format(np.mean(aps)))
-    print('~~~~~~~~')
-    print('')
-    print('--------------------------------------------------------------')
-    print('Results computed with the **unofficial** Python eval code.')
-    print('Results should be very close to the official MATLAB eval code.')
-    print('-- Thanks, The Management')
-    print('--------------------------------------------------------------')
+    stp = np.sum(tp_sums)
+    sfp = np.sum(fp_sums)
+    snpos = np.sum(nposs)
+
+    recs = np.divide(tp_sums , nposs)
+    precs = np.divide(tp_sums, [sum(x) for x in zip(tp_sums, fp_sums)])
+
+
+    rec = stp / float(snpos)
+    # avoid divide by zero in case the first detection matches a difficult
+    # ground truth
+    prec = stp / np.maximum(stp + sfp, np.finfo(np.float64).eps)
+    print("prec: {}, rec:{}".format(prec, rec))
+
+    # print('~~~~~~~~')
+    # print('Results:')
+    # for ap in aps:
+    #     print('{:.3f}'.format(ap))
+    # print('{:.3f}'.format(np.mean(aps)))
+    # print('~~~~~~~~')
+    # print('')
+    # print('--------------------------------------------------------------')
+    # print('Results computed with the **unofficial** Python eval code.')
+    # print('Results should be very close to the official MATLAB eval code.')
+    # print('-- Thanks, The Management')
+    # print('--------------------------------------------------------------')
 
 
 

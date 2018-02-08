@@ -122,14 +122,7 @@ def voc_eval(detpath,
     # extract gt objects for this class
     class_recs = {}
     npos = 0
-    distribution = {}
     for imagename in imagenames:
-        number = len(recs[imagename])
-        if not distribution.has_key(number):
-            distribution[number] = 1
-        else:
-            distribution[number] += 1
-
         R = [obj for obj in recs[imagename] if obj['name'] == classname]
         bbox = np.array([x['bbox'] for x in R])
         difficult = np.array([x['difficult'] for x in R]).astype(np.bool)
@@ -138,10 +131,6 @@ def voc_eval(detpath,
         class_recs[imagename] = {'bbox': bbox,
                                  'difficult': difficult,
                                  'det': det}
-
-    for key, value in distribution:
-        print("key: {}, value: {}".format(key, value))
-
 
     # read dets
     detfile = detpath.format(classname)
@@ -199,41 +188,41 @@ def voc_eval(detpath,
         else:
             fp[d] = 1.
 
-    fps = []
-    tps = []
-    indexs = []
-    for index ,thresh in enumerate(np.arange(0.99, -0.01, -0.01)):
-        fps.append(0.0)
-        tps.append(0.0)
-        # indexs.append(index)
-
-
-    for index ,thresh in enumerate(np.arange(0.99, -0.01, -0.01)):
-        current = 0
-        for i in sorted_ind:
-            # I need to cumulate the sum from the firs t value to
-            # handle thresh 0.99 seperately
-            if confidence[i] >= 0.99 and thresh == 0.99:
-                # print("confident[{}]: {}".format(i, confidence[i]))
-                fps[index] += fp[current]
-                tps[index] += tp[current]
-
-            elif(confidence[i] >= thresh and confidence[i] < thresh + 0.01):
-                # print("confident[{}]: {}".format(i, confidence[i]))
-                fps[index] += fp[current]
-                tps[index] += tp[current]
-
-
-            current += 1
+    # fps = []
+    # tps = []
+    # indexs = []
+    # for index ,thresh in enumerate(np.arange(0.99, -0.01, -0.01)):
+    #     fps.append(0.0)
+    #     tps.append(0.0)
+    #     # indexs.append(index)
+    #
+    #
+    # for index ,thresh in enumerate(np.arange(0.99, -0.01, -0.01)):
+    #     current = 0
+    #     for i in sorted_ind:
+    #         # I need to cumulate the sum from the firs t value to
+    #         # handle thresh 0.99 seperately
+    #         if confidence[i] >= 0.99 and thresh == 0.99:
+    #             # print("confident[{}]: {}".format(i, confidence[i]))
+    #             fps[index] += fp[current]
+    #             tps[index] += tp[current]
+    #
+    #         elif(confidence[i] >= thresh and confidence[i] < thresh + 0.01):
+    #             # print("confident[{}]: {}".format(i, confidence[i]))
+    #             fps[index] += fp[current]
+    #             tps[index] += tp[current]
+    #
+    #
+    #         current += 1
 
     # compute precision recall
-    fp = np.cumsum(fp)
-    tp = np.cumsum(tp)
+    # fp = np.cumsum(fp)
+    # tp = np.cumsum(tp)
 
-    fps = np.cumsum(fps)
-    tps = np.cumsum(tps)
-    recs = tps / float(npos)
-    precs = tps / np.maximum(tps + fps, np.finfo(np.float64).eps)
+    # fps = np.cumsum(fps)
+    # tps = np.cumsum(tps)
+    # recs = tps / float(npos)
+    # precs = tps / np.maximum(tps + fps, np.finfo(np.float64).eps)
 
     #change this will be fine, the fp, tp can be modified
     #
@@ -244,4 +233,7 @@ def voc_eval(detpath,
 
     ap = voc_ap(rec, prec, use_07_metric)
 
-    return tps, fps, npos, ap
+    fp_sum = np.sum(fp)
+    tp_sum = np.sum(tp)
+
+    return tp_sum, fp_sum, npos

@@ -10,6 +10,27 @@
 #include <string.h>
 #include <stdlib.h>
 
+
+void print_l_information(const detection_layer l) {
+    int debug = 1;
+    if (!debug) {
+        return;
+    }
+
+//    printf("l.softmax: %d\r\n", l.softmax);
+//    printf("l.outputs %d\r\n", l.outputs);
+//    printf("l.batch: %d\r\n", l.batch);    //一个batch是64张图，分成4份，就是16张图一份
+//    printf("l.inputs: %d\r\n", l.inputs);  // 1715 full connect层，
+//    printf("l.n %d\r\n", l.n);             //n是num 现在是3个
+//    printf("l.coords: %d\r\n", l.coords);   //这个是配置里面的 coords现在是4 有4个
+//    printf("l.classes: %d\r\n", l.classes); //classes的个数 现在是20
+//    printf("l.class_scale: %f\r\n", l.class_scale);  //class_scale是配置的
+//    printf("l.cost: %f\r\n", l.cost);        //cost 也就是loss
+//    printf("l.delta size: %d\r\n", sizeof(l.delta) / sizeof(float)); //这个delta就是反向的差分存了多大,并不是2
+//    printf("l.noobject_scale: %f\r\n", l.noobject_scale);
+//    printf("l.output size: %d\r\n", sizeof(l.output) / sizeof(float)); //已有
+}
+
 detection_layer make_detection_layer(int batch, int inputs, int n, int side, int classes, int coords, int rescore)
 {
     detection_layer l = {0};
@@ -24,7 +45,7 @@ detection_layer make_detection_layer(int batch, int inputs, int n, int side, int
     l.side = side;
     l.w = side;
     l.h = side;
-    assert(side*side*((1 + l.coords)*l.n + l.classes) == inputs);
+//    assert(side*side*((1 + l.coords)*l.n + l.classes) + 20*21 == inputs);
     l.cost = calloc(1, sizeof(float));
     l.outputs = l.inputs;
     l.truths = l.side*l.side*(1+l.coords+l.classes);
@@ -43,16 +64,27 @@ detection_layer make_detection_layer(int batch, int inputs, int n, int side, int
     fprintf(stderr, "Detection Layer\n");
     srand(0);
 
+    print_l_information(l);
+
     return l;
 }
 
+
+
+
+
 void forward_detection_layer(const detection_layer l, network_state state)
 {
+//    printf("Here is the forward_detection_layer\r\n");
     int locations = l.side*l.side;
     int i,j;
     memcpy(l.output, state.input, l.outputs*l.batch*sizeof(float));
     //if(l.reorg) reorg(l.output, l.w*l.h, size*l.n, l.batch, 1);
     int b;
+
+
+
+
     if (l.softmax){
         for(b = 0; b < l.batch; ++b){
             int index = b*l.inputs;
@@ -63,6 +95,7 @@ void forward_detection_layer(const detection_layer l, network_state state)
             }
         }
     }
+
     if(state.train){
         float avg_iou = 0;
         float avg_cat = 0;
@@ -73,11 +106,21 @@ void forward_detection_layer(const detection_layer l, network_state state)
         *(l.cost) = 0;
         int size = l.inputs * l.batch;
         memset(l.delta, 0, size * sizeof(float));
+
+        //用来保存各个类别的obeject有多少的
+        int obj_ins_index[20] = {0};
+        int max_card = 21;
+        float *cardinality_truth = calloc(l.classes*max_card, sizeof(float));
+
         for (b = 0; b < l.batch; ++b){
-            int index = b*l.inputs;
-            for (i = 0; i < locations; ++i) {
-                int truth_index = (b*locations + i)*(1+l.coords+l.classes);
-                int is_obj = state.truth[truth_index];
+
+
+            int index = b*l.inputs;            //第几个1715开始,就是一个batch中第几张图片的开始
+            for (i = 0; i < locations; ++i) {           //locations = l.side * l.side
+                int truth_index = (b*locations + i)*(1+l.coords+l.classes); //
+
+                int is_obj = state.truth[truth_index]; // 有了index 有了是不是obj，然后累加，就是一共有多少 在一个图片里
+
                 for (j = 0; j < l.n; ++j) {
                     int p_index = index + locations*l.classes + i*l.n + j;
                     l.delta[p_index] = l.noobject_scale*(0 - l.output[p_index]);
@@ -89,22 +132,32 @@ void forward_detection_layer(const detection_layer l, network_state state)
                 float best_iou = 0;
                 float best_rmse = 20;
 
+                //没有目标的这里就计算结束了
                 if (!is_obj){
                     continue;
                 }
 
+                //下面都是有目标的,这是在每个location里面的，是不是truth_index就是 truth的起点，而class_index是class的起点
                 int class_index = index + i*l.classes;
-                for(j = 0; j < l.classes; ++j) {
+                for(j = 0; j < l.classes; ++j) { //循环每个class  为什么 truth_index需要有个+1的偏移呢？
                     l.delta[class_index+j] = l.class_scale * (state.truth[truth_index+1+j] - l.output[class_index+j]);
                     *(l.cost) += l.class_scale * pow(state.truth[truth_index+1+j] - l.output[class_index+j], 2);
                     if(state.truth[truth_index + 1 + j]) avg_cat += l.output[class_index+j];
+
+                    /* generate the cardinality truth add by minming */
+                    if(state.truth[truth_index + 1 + j]) obj_ins_index[j] += 1;
+                    /* end modification */
+
                     avg_allcat += l.output[class_index+j];
                 }
+
+
 
                 box truth = float_to_box(state.truth + truth_index + 1 + l.classes);
                 truth.x /= l.side;
                 truth.y /= l.side;
 
+                //n是代表有几个bounding box,找到bounding box
                 for(j = 0; j < l.n; ++j){
                     int box_index = index + locations*(l.classes + l.n) + (i*l.n + j) * l.coords;
                     box out = float_to_box(l.output + box_index);
@@ -179,7 +232,56 @@ void forward_detection_layer(const detection_layer l, network_state state)
                 avg_iou += iou;
                 ++count;
             }
+
+            /* add by minming, this is the cardinality index in the output */
+            int card_index = index + locations * (l.classes + l.n * (1 + l.coords)); //1是probility，coords是坐标
+//            printf("card_index %d\r\n", card_index);
+            for (i = 0; i < l.classes; ++i) {
+                int offset = i*max_card;
+                //每个class是一个独立的softmax, calculate the softmax
+                softmax(l.output + card_index + offset, max_card, 1,
+                        l.output + card_index + offset);
+                cardinality_truth[offset + obj_ins_index[i]] = 1;
+            }
+            for (int n = 0; n < l.classes; ++n) {
+                for (int k = 0; k < max_card; ++k) {
+                    float y_n = cardinality_truth[n*max_card + k];
+                    float y_o = l.output[card_index + n*max_card + k];
+                    *(l.cost) += -(y_n * log(y_o) + (1-y_n) * log(1 - y_o)) / max_card; //cross-entropy
+                    //这里的正反很重要啊，居然导致反向就反了, 但是好像这个导数也不是太对
+                    l.delta[card_index + n*max_card + k] = - l.output[card_index + n*max_card +k] + cardinality_truth[n*max_card + k];
+                }
+            }
+//            /* End of modification minming */
+//            printf("the cost is: %f \r\n", *(l.cost));
+////            here is 49 * 20 finished, 其实可以用一个循环来打印的
+//            for (int m = 0; m < l.classes; ++m) {
+//                printf("[%d]%d ", m, obj_ins_index[m]);
+//            }
+//            printf("\r\n");
+//            for (int n = 0; n < l.classes; ++n) {
+//                printf("t: ");
+//                for (int k = 0; k < max_card; ++k) {
+//                    printf("%0.3f ", cardinality_truth[n * max_card + k]);
+//                }
+//                printf("\r\n");
+//                printf("o: ");
+//                for (int k = 0; k < max_card; ++k) {
+//                    printf("%.3f ", l.output[card_index + n * max_card + k]);
+//                }
+//                printf("\r\n");
+//            }
+
+
+            for (int n = 0; n < 20; ++n) {
+                obj_ins_index[n] = 0;
+                for (int k = 0; k < max_card; ++k) {
+                    cardinality_truth[20*n+k] = 0;
+                }
+            }
         }
+
+        print_l_information(l);
 
         if(0){
             float *costs = calloc(l.batch*locations*l.n, sizeof(float));
@@ -207,8 +309,9 @@ void forward_detection_layer(const detection_layer l, network_state state)
             free(costs);
         }
 
-
+//        printf("cost before: %f\r\n", *(l.cost));
         *(l.cost) = pow(mag_array(l.delta, l.outputs * l.batch), 2);
+//        printf("cost after: %f\r\n", *(l.cost));
 
 
         printf("Detection Avg IOU: %f, Pos Cat: %f, All Cat: %f, Pos Obj: %f, Any Obj: %f, count: %d\n", avg_iou/count, avg_cat/count, avg_allcat/(count*l.classes), avg_obj/count, avg_anyobj/(l.batch*locations*l.n), count);
