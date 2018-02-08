@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="602c3ef1-629b-4a8d-8981-013247e462c5" name="tony" url="http://129.127.10.203">
+        <fileTransfer host="129.127.10.203" port="22" rootFolder="/home/qianminming/Github/yolov1" accessType="SFTP">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" />
+          </advancedOptions>
+          <option name="port" value="22" />
+        </fileTransfer>
+      </webServer>
+      <webServer id="e8864529-2eeb-4f78-9cc4-f23024a2c1d5" name="hu" url="http://129.127.9.157/home/hu">
+        <fileTransfer host="129.127.9.157/home/hu" port="22" accessType="SFTP">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" />
+          </advancedOptions>
+          <option name="port" value="22" />
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>

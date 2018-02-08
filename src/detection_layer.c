@@ -234,25 +234,24 @@ void forward_detection_layer(const detection_layer l, network_state state)
             }
 
             /* add by minming, this is the cardinality index in the output */
-            int card_index = index + locations * (l.classes + l.n * (1 + l.coords)); //1是probility，coords是坐标
-//            printf("card_index %d\r\n", card_index);
-            for (i = 0; i < l.classes; ++i) {
-                int offset = i*max_card;
-                //每个class是一个独立的softmax, calculate the softmax
-                softmax(l.output + card_index + offset, max_card, 1,
-                        l.output + card_index + offset);
-                cardinality_truth[offset + obj_ins_index[i]] = 1;
-            }
-            for (int n = 0; n < l.classes; ++n) {
-                for (int k = 0; k < max_card; ++k) {
-                    float y_n = cardinality_truth[n*max_card + k];
-                    float y_o = l.output[card_index + n*max_card + k];
-                    *(l.cost) += -(y_n * log(y_o) + (1-y_n) * log(1 - y_o)) / max_card; //cross-entropy
-                    //这里的正反很重要啊，居然导致反向就反了, 但是好像这个导数也不是太对
-                    l.delta[card_index + n*max_card + k] = - l.output[card_index + n*max_card +k] + cardinality_truth[n*max_card + k];
-                }
-            }
-//            /* End of modification minming */
+//            int card_index = index + locations * (l.classes + l.n * (1 + l.coords)); //1是probility，coords是坐标
+////            printf("card_index %d\r\n", card_index);
+//            for (i = 0; i < l.classes; ++i) {
+//                int offset = i*max_card;
+//                //每个class是一个独立的softmax, calculate the softmax
+//                softmax(l.output + card_index + offset, max_card, 1,
+//                        l.output + card_index + offset);
+//                cardinality_truth[offset + obj_ins_index[i]] = 1;
+//            }
+//            for (int n = 0; n < l.classes; ++n) {
+//                for (int k = 0; k < max_card; ++k) {
+//                    float y_n = cardinality_truth[n*max_card + k];
+//                    float y_o = l.output[card_index + n*max_card + k];
+//                    *(l.cost) += -(y_n * log(y_o) + (1-y_n) * log(1 - y_o)) / max_card; //cross-entropy
+//                    //这里的正反很重要啊，居然导致反向就反了, 但是好像这个导数也不是太对
+//                    l.delta[card_index + n*max_card + k] = - l.output[card_index + n*max_card +k] + cardinality_truth[n*max_card + k];
+//                }
+//            }
 //            printf("the cost is: %f \r\n", *(l.cost));
 ////            here is 49 * 20 finished, 其实可以用一个循环来打印的
 //            for (int m = 0; m < l.classes; ++m) {
@@ -273,12 +272,13 @@ void forward_detection_layer(const detection_layer l, network_state state)
 //            }
 
 
-            for (int n = 0; n < 20; ++n) {
-                obj_ins_index[n] = 0;
-                for (int k = 0; k < max_card; ++k) {
-                    cardinality_truth[20*n+k] = 0;
-                }
-            }
+//            for (int n = 0; n < 20; ++n) {
+//                obj_ins_index[n] = 0;
+//                for (int k = 0; k < max_card; ++k) {
+//                    cardinality_truth[20*n+k] = 0;
+//                }
+//            }
+//            /* End of modification minming */
         }
 
         print_l_information(l);
