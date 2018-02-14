@@ -45,7 +45,8 @@ detection_layer make_detection_layer(int batch, int inputs, int n, int side, int
     l.side = side;
     l.w = side;
     l.h = side;
-    assert(side*side*((1 + l.coords)*l.n + l.classes) + 20*21 == inputs);
+//    assert(side*side*((1 + l.coords)*l.n + l.classes) + 20*21 == inputs);
+//    assert(side*side*((1 + l.coords)*l.n + l.classes)  == inputs);
     l.cost = calloc(1, sizeof(float));
     l.outputs = l.inputs;
     l.truths = l.side*l.side*(1+l.coords+l.classes);
@@ -107,20 +108,21 @@ void forward_detection_layer(const detection_layer l, network_state state)
         int size = l.inputs * l.batch;
         memset(l.delta, 0, size * sizeof(float));
 
-        //用来保存各个类别的obeject有多少的
-        int obj_ins_index[20] = {0};
-        int max_card = 21;
-        float *cardinality_truth = calloc(l.classes*max_card, sizeof(float));
 
         for (b = 0; b < l.batch; ++b){
 
+            /* added by Minming */
+            int *obj_ins_index = calloc(l.classes, sizeof(int));
+            int max_card = 21;
+            float *cardinality_truth = calloc(l.classes*max_card, sizeof(float));
+            /* End added by Minming */
 
             int index = b*l.inputs;            //第几个1715开始,就是一个batch中第几张图片的开始
             for (i = 0; i < locations; ++i) {           //locations = l.side * l.side
                 int truth_index = (b*locations + i)*(1+l.coords+l.classes); //
 
                 int is_obj = state.truth[truth_index]; // 有了index 有了是不是obj，然后累加，就是一共有多少 在一个图片里
-
+                // 这是从 980 开始的 49 *  3 个，每个 盒子一个confidence 所以这里是confidence
                 for (j = 0; j < l.n; ++j) {
                     int p_index = index + locations*l.classes + i*l.n + j;
                     l.delta[p_index] = l.noobject_scale*(0 - l.output[p_index]);
@@ -138,6 +140,7 @@ void forward_detection_layer(const detection_layer l, network_state state)
                 }
 
                 //下面都是有目标的,这是在每个location里面的，是不是truth_index就是 truth的起点，而class_index是class的起点
+                //49*20 前 980个 是cell已经class的类别
                 int class_index = index + i*l.classes;
                 for(j = 0; j < l.classes; ++j) { //循环每个class  为什么 truth_index需要有个+1的偏移呢？
                     l.delta[class_index+j] = l.class_scale * (state.truth[truth_index+1+j] - l.output[class_index+j]);
@@ -157,7 +160,7 @@ void forward_detection_layer(const detection_layer l, network_state state)
                 truth.x /= l.side;
                 truth.y /= l.side;
 
-                //n是代表有几个bounding box,找到bounding box
+                //n是代表有几个bounding box,找到bounding box，这里偏移  49 * (20 + n)个找到对应的box
                 for(j = 0; j < l.n; ++j){
                     int box_index = index + locations*(l.classes + l.n) + (i*l.n + j) * l.coords;
                     box out = float_to_box(l.output + box_index);
@@ -234,21 +237,21 @@ void forward_detection_layer(const detection_layer l, network_state state)
             }
 
             /* add by minming, this is the cardinality index in the output */
-            int card_index = index + locations * (l.classes + l.n * (1 + l.coords)); //1是probility，coords是坐标
+            int card_index = index + locations * (l.classes + l.n * (1 + l.coords));  //1是probility，就是confidence, coords是坐标
 //            printf("card_index %d\r\n", card_index);
             int n = 0;
             int k = 0;
 
 
-            for (n = 0; n < l.classes; ++n) {
-                printf("before o: \n");
-                for (k = 0; k < max_card; ++k) {
-                    printf("%.3f ", l.output[card_index + n * max_card + k]);
-                }
-                printf("\r\n");
-            }
+//            for (n = 0; n < l.classes; ++n) {
+//                printf("before o: \n");
+//                for (k = 0; k < max_card; ++k) {
+//                    printf("%.3f ", l.output[card_index + n * max_card + k]);
+//                }
+//                printf("\r\n");
+//            }
 
-
+            // 把每个独立的做softmax，并且求出来7*7格子的cardinaility的二进制表示，就是ground truth和
             for (i = 0; i < l.classes; ++i) {
                 int offset = i*max_card;
                 softmax(l.output + card_index + offset, max_card, 1,
@@ -256,22 +259,24 @@ void forward_detection_layer(const detection_layer l, network_state state)
                 cardinality_truth[offset + obj_ins_index[i]] = 1;
             }
 
+            printf("the cost before is: %f \r\n", *(l.cost));
+
             for (n = 0; n < l.classes; ++n) {
                 for (k = 0; k < max_card; ++k) {
                     float y_t = cardinality_truth[n*max_card + k];
                     float y_o = l.output[card_index + n*max_card + k];
-                    *(l.cost) += -(y_t * log(y_o) + (1-y_t) * log(1 - y_o)) / max_card; //cross-entropy
-                    l.delta[card_index + n*max_card + k] = - l.output[card_index + n*max_card +k] + cardinality_truth[n*max_card + k];
+                    *(l.cost) += -y_t*log(y_o + 0.00000001) ;  //cross-entropy , to avoid log(0)
+                    l.delta[card_index + n*max_card + k] = - y_o + y_t;   //d_E/d_oj * d_oj/d_zj
                 }
             }
-
             printf("the cost is: %f \r\n", *(l.cost));
+
 //            here is 49 * 20 finished, 其实可以用一个循环来打印的
-            int m = 0;
-            for (m = 0; m < l.classes; ++m) {
-                printf("[%d]%d ", m, obj_ins_index[m]);
-            }
-            printf("\r\n");
+//            int m = 0;
+//            for (m = 0; m < l.classes; ++m) {
+//                printf("[%d]%d ", m, obj_ins_index[m]);
+//            }
+//            printf("\r\n");
             for (n = 0; n < l.classes; ++n) {
                 printf("t: ");
                 for (k = 0; k < max_card; ++k) {
@@ -285,7 +290,7 @@ void forward_detection_layer(const detection_layer l, network_state state)
                 printf("\r\n");
             }
 //
-//
+
             for (n = 0; n < 20; ++n) {
                 obj_ins_index[n] = 0;
                 for (k = 0; k < max_card; ++k) {
@@ -325,7 +330,7 @@ void forward_detection_layer(const detection_layer l, network_state state)
 
 //        printf("cost before: %f\r\n", *(l.cost));
         *(l.cost) = pow(mag_array(l.delta, l.outputs * l.batch), 2);
-//        printf("cost after: %f\r\n", *(l.cost));
+        printf("cost after: %f\r\n", *(l.cost));
 
 
         printf("Detection Avg IOU: %f, Pos Cat: %f, All Cat: %f, Pos Obj: %f, Any Obj: %f, count: %d\n", avg_iou/count, avg_cat/count, avg_allcat/(count*l.classes), avg_obj/count, avg_anyobj/(l.batch*locations*l.n), count);
