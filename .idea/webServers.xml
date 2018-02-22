@@ -2,7 +2,23 @@
 <project version="4">
   <component name="WebServers">
     <option name="servers">
-      <webServer id="602c3ef1-629b-4a8d-8981-013247e462c5" name="tony" url="http://129.127.10.203">
+      <webServer id="602c3ef1-629b-4a8d-8981-013247e462c5" name="tony_v1_align" url="http://129.127.10.203">
+        <fileTransfer host="129.127.10.203" port="22" rootFolder="/home/qianminming/Github/yolov1_align" accessType="SFTP">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" />
+          </advancedOptions>
+          <option name="port" value="22" />
+        </fileTransfer>
+      </webServer>
+      <webServer id="785b6a21-6e54-4364-ab94-1e7476e99c9b" name="hu_yolov1" url="http://129.127.9.157">
+        <fileTransfer host="129.127.9.157" port="22" rootFolder="/home/qhu/minming/yolov1" accessType="SFTP">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" />
+          </advancedOptions>
+          <option name="port" value="22" />
+        </fileTransfer>
+      </webServer>
+      <webServer id="6cd743f2-ebd2-4d6a-b430-493855cbaad2" name="tony_yolov1" url="http://129.127.10.203">
         <fileTransfer host="129.127.10.203" port="22" rootFolder="/home/qianminming/Github/yolov1" accessType="SFTP">
           <advancedOptions>
             <advancedOptions dataProtectionLevel="Private" />
@@ -10,8 +26,8 @@
           <option name="port" value="22" />
         </fileTransfer>
       </webServer>
-      <webServer id="e8864529-2eeb-4f78-9cc4-f23024a2c1d5" name="hu" url="http://129.127.9.157/home/hu">
-        <fileTransfer host="129.127.9.157/home/hu" port="22" accessType="SFTP">
+      <webServer id="91971538-25d4-402f-af1a-6f326bfc1670" name="hu_v1_align" url="http://129.127.9.157">
+        <fileTransfer host="129.127.9.157" port="22" rootFolder="/home/qhu/minming/yolov1_align" accessType="SFTP">
           <advancedOptions>
             <advancedOptions dataProtectionLevel="Private" />
           </advancedOptions>

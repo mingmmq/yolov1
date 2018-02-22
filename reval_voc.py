@@ -128,7 +128,8 @@ def do_python_eval(devkit_path, year, image_set, classes, output_dir = 'results'
     # mean_rec = np.mean(recs, axis=0)
     print('mean prec={},\nmean rec={}').format(precs, recs)
 
-    show_pr_curve(precs, recs, 0.6316, 0.6971, "together")
+    # todo the pr curve code is shown here
+    # show_pr_curve(precs, recs, 0.6316, 0.6971, "together")
     print('Mean AP = {:.4f}'.format(np.mean(aps)))
     print('~~~~~~~~')
     print('Results:')

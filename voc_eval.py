@@ -139,8 +139,10 @@ def voc_eval(detpath,
                                  'difficult': difficult,
                                  'det': det}
 
-    for key, value in distribution:
-        print("key: {}, value: {}".format(key, value))
+    # these are added for debug
+    # print distribution
+    # for key, value in distribution.items():
+    #     print("key: {}, value: {}".format(key, value))
 
 
     # read dets

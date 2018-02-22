@@ -84,6 +84,7 @@ struct layer{
     float shift;
     float ratio;
     int softmax;
+    int cardi;
     int classes;
     int coords;
     int background;
@@ -160,6 +161,8 @@ struct layer{
     float * output;
     float * squared;
     float * norms;
+    int   * cardi_of;
+    float * cardi_binary;
 
     float * spatial_mean;
     float * mean;

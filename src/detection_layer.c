@@ -31,7 +31,55 @@ void print_l_information(const detection_layer l) {
 //    printf("l.output size: %d\r\n", sizeof(l.output) / sizeof(float)); //已有
 }
 
-detection_layer make_detection_layer(int batch, int inputs, int n, int side, int classes, int coords, int rescore)
+//int cardi_distribution[20] = {7,7,12,9,8,5,10,6,21,12,5,6,7,8,18,11,10,4,4,8};
+//this is for train,val,2007 and train,val,2012
+int cardi_distribution[20] = {17, 7, 28, 15, 21, 7, 13, 6, 21, 13, 10, 9, 8, 10, 18, 20, 22, 6, 6, 33};
+//int cardi_distribution_s[20] = {6,6,11,8,7,4,9,5,20,11,4,5,6,7,17,10,9,3,3,7};
+
+int get_cardi_sum(detection_layer l) {
+    if (1 == l.cardi) return l.classes * get_cardi_max(l.classes);
+    int cardi_sum = 0;
+    int i = 0;
+    for (i = 0; i < l.classes; ++i) {
+        cardi_sum += cardi_distribution[i];
+    }
+    return cardi_sum;
+}
+
+int get_cardi_max(int classes){
+    int cardi_max = 0;
+    int i = 0;
+    for (i = 0; i < classes; ++i) {
+        if (cardi_distribution[i] > cardi_max) {
+            cardi_max = cardi_distribution[i];
+        }
+    }
+    return cardi_max;
+}
+
+int get_acc_cardi_offset(int class_index){
+    int offset = 0;
+    int i = 0;
+    // here must use small than (instead of <=) this is the first point of the start
+    for (i = 0; i < class_index; ++i) {
+        offset += cardi_distribution[i];
+    }
+    return offset;
+}
+
+/**
+ * Make the final detection layer, while building the network
+ * @param batch
+ * @param inputs
+ * @param n
+ * @param side
+ * @param classes
+ * @param coords
+ * @param rescore
+ * @param cardi_type  0 for standart yolo, 1 for alignment cardinality, 2 for unalignment cardinality
+ * @return
+ */
+detection_layer make_detection_layer(int batch, int inputs, int n, int side, int classes, int coords, int rescore, int cardi)
 {
     detection_layer l = {0};
     l.type = DETECTION;
@@ -45,13 +93,29 @@ detection_layer make_detection_layer(int batch, int inputs, int n, int side, int
     l.side = side;
     l.w = side;
     l.h = side;
-//    assert(side*side*((1 + l.coords)*l.n + l.classes) + 20*21 == inputs);
-//    assert(side*side*((1 + l.coords)*l.n + l.classes)  == inputs);
+    l.cardi = cardi;
+    int cardi_count=0;
+
+    if (0 == cardi) {
+        assert(side*side*((1 + l.coords)*l.n + l.classes)  == inputs);
+        printf("[check cardi type] forward_detection_layer\r\n");
+    } else if (1 == cardi) {
+        assert(side*side*((1 + l.coords)*l.n + l.classes) + 20*get_cardi_max(l.classes) == inputs);
+        printf("[check cardi type] forward_detection_layer_align\n");
+    } else if (2 == cardi) {
+        int cardi_sum = get_cardi_sum(l);
+        assert(side*side*((1 + l.coords)*l.n + l.classes) + cardi_sum == inputs);
+        printf("[check cardi type] forward_detection_layer_unalign\n");
+    }
     l.cost = calloc(1, sizeof(float));
     l.outputs = l.inputs;
     l.truths = l.side*l.side*(1+l.coords+l.classes);
     l.output = calloc(batch*l.outputs, sizeof(float));
     l.delta = calloc(batch*l.outputs, sizeof(float));
+
+    cardi_count = get_cardi_sum(l);
+    l.cardi_of = calloc(l.classes, sizeof(int));
+    l.cardi_binary = calloc(cardi_count, sizeof(float));
 
     l.forward = forward_detection_layer;
     l.backward = backward_detection_layer;
@@ -65,26 +129,18 @@ detection_layer make_detection_layer(int batch, int inputs, int n, int side, int
     fprintf(stderr, "Detection Layer\n");
     srand(0);
 
-    print_l_information(l);
-
     return l;
 }
 
-
-
-
-
 void forward_detection_layer(const detection_layer l, network_state state)
 {
-//    printf("Here is the forward_detection_layer\r\n");
+
+    int debug = 0;
     int locations = l.side*l.side;
     int i,j;
     memcpy(l.output, state.input, l.outputs*l.batch*sizeof(float));
     //if(l.reorg) reorg(l.output, l.w*l.h, size*l.n, l.batch, 1);
     int b;
-
-
-
 
     if (l.softmax){
         for(b = 0; b < l.batch; ++b){
@@ -110,12 +166,11 @@ void forward_detection_layer(const detection_layer l, network_state state)
 
 
         for (b = 0; b < l.batch; ++b){
-
-            /* added by Minming */
-            int *obj_ins_index = calloc(l.classes, sizeof(int));
-            int max_card = 21;
-            float *cardinality_truth = calloc(l.classes*max_card, sizeof(float));
-            /* End added by Minming */
+            //added by minming
+            memset(l.cardi_of, 0, l.classes*sizeof(int));
+            int card_sum = get_cardi_sum(l);
+            memset(l.cardi_binary,0, card_sum* sizeof(float));
+            //end added by minming
 
             int index = b*l.inputs;            //第几个1715开始,就是一个batch中第几张图片的开始
             for (i = 0; i < locations; ++i) {           //locations = l.side * l.side
@@ -148,7 +203,8 @@ void forward_detection_layer(const detection_layer l, network_state state)
                     if(state.truth[truth_index + 1 + j]) avg_cat += l.output[class_index+j];
 
                     /* generate the cardinality truth add by minming */
-                    if(state.truth[truth_index + 1 + j]) obj_ins_index[j] += 1;
+                    //count how many truth of each instance type
+                    if(state.truth[truth_index + 1 + j]) l.cardi_of[j] += 1;
                     /* end modification */
 
                     avg_allcat += l.output[class_index+j];
@@ -237,70 +293,91 @@ void forward_detection_layer(const detection_layer l, network_state state)
             }
 
             /* add by minming, this is the cardinality index in the output */
-            int card_index = index + locations * (l.classes + l.n * (1 + l.coords));  //1是probility，就是confidence, coords是坐标
-//            printf("card_index %d\r\n", card_index);
-            int n = 0;
-            int k = 0;
+            // 1是 probability 49 * 3 * 1 (every box one confidence) ，就是confidence, coords是坐标
+            if (l.cardi) {
+                int card_index = index + locations * (l.classes + l.n * (1 + l.coords));
 
+                int n = 0;
+                int k = 0;
+                int i1 = 0;
 
-//            for (n = 0; n < l.classes; ++n) {
-//                printf("before o: \n");
-//                for (k = 0; k < max_card; ++k) {
-//                    printf("%.3f ", l.output[card_index + n * max_card + k]);
-//                }
-//                printf("\r\n");
-//            }
-
-            // 把每个独立的做softmax，并且求出来7*7格子的cardinaility的二进制表示，就是ground truth和
-            for (i = 0; i < l.classes; ++i) {
-                int offset = i*max_card;
-                softmax(l.output + card_index + offset, max_card, 1,
-                        l.output + card_index + offset);
-                cardinality_truth[offset + obj_ins_index[i]] = 1;
-            }
-
-            printf("the cost before is: %f \r\n", *(l.cost));
-
-            for (n = 0; n < l.classes; ++n) {
-                for (k = 0; k < max_card; ++k) {
-                    float y_t = cardinality_truth[n*max_card + k];
-                    float y_o = l.output[card_index + n*max_card + k];
-                    *(l.cost) += -y_t*log(y_o + 0.00000001) ;  //cross-entropy , to avoid log(0)
-                    l.delta[card_index + n*max_card + k] = - y_o + y_t;   //d_E/d_oj * d_oj/d_zj
+                // 把每个独立的做softmax，并且求出来7*7格子的cardinaility的二进制表示，就是ground truth和
+                for (i1 = 0; i1 < l.classes; ++i1) {
+                    int offset;
+                    int bin_length;
+                    if (1 == l.cardi) {
+                        offset = i1 * get_cardi_max(l.classes);
+                        bin_length = get_cardi_max(l.classes);
+                    } else if (2 == l.cardi) {
+                        offset = get_acc_cardi_offset(i1);
+                        bin_length = cardi_distribution[i1];
+                    }
+                    softmax(l.output + card_index + offset, bin_length, 1,
+                            l.output + card_index + offset);
+                    //只设置cardi对应的位置
+                    l.cardi_binary[offset + l.cardi_of[i1]] = 1;
                 }
-            }
-            printf("the cost is: %f \r\n", *(l.cost));
 
-//            here is 49 * 20 finished, 其实可以用一个循环来打印的
-//            int m = 0;
-//            for (m = 0; m < l.classes; ++m) {
-//                printf("[%d]%d ", m, obj_ins_index[m]);
-//            }
-//            printf("\r\n");
-            for (n = 0; n < l.classes; ++n) {
-                printf("t: ");
-                for (k = 0; k < max_card; ++k) {
-                    printf("%0.3f ", cardinality_truth[n * max_card + k]);
-                }
-                printf("\r\n");
-                printf("o: ");
-                for (k = 0; k < max_card; ++k) {
-                    printf("%.3f ", l.output[card_index + n * max_card + k]);
-                }
-                printf("\r\n");
-            }
-//
+                if (debug) printf("the cost before is: %f \r\n", *(l.cost));
 
-            for (n = 0; n < 20; ++n) {
-                obj_ins_index[n] = 0;
-                for (k = 0; k < max_card; ++k) {
-                    cardinality_truth[20*n+k] = 0;
+                for (n = 0; n < l.classes; ++n) {
+                    int cardi_in_a_row;
+                    if (1 == l.cardi) {
+                        cardi_in_a_row = get_cardi_max(l.classes);
+                    } else if (2 == l.cardi) {
+                        cardi_in_a_row = cardi_distribution[n];
+                    }
+                    for (k = 0; k < cardi_in_a_row; ++k) {
+                        //这里是要遍历所有的
+                        int offset;
+                        if (1 == l.cardi) {
+                            offset = n * get_cardi_max(l.classes);
+                        } else if (2 == l.cardi) {
+                            offset = get_acc_cardi_offset(n);
+                        }
+//                        if (debug) printf("cardi offset index %d\r\n", offset);
+                        float y_t = l.cardi_binary[offset + k];
+                        float y_o = l.output[card_index + offset + k];
+//                        if (debug) printf("yt: %f, yo: %f", y_t, y_o);
+                        *(l.cost) += -y_t * log(y_o + 0.00000001);  //cross-entropy , to avoid log(0)
+                        l.delta[card_index + offset + k] = -y_o + y_t;   //d_E/d_oj * d_oj/d_zj
+                    }
+                }
+
+                //compare the result of the ground truth and the toutpit
+                if (1) {
+                    printf("the cost after is: %f \r\n", *(l.cost));
+                    int m = 0;
+                    for (m = 0; m < l.classes; ++m) {
+                        printf("[%d]%d ", m, l.cardi_of[m]);
+                    }
+                    printf("\r\n");
+                    for (n = 0; n < l.classes; ++n) {
+                        printf("[%d] t: ", n);
+                        int cardi_in_a_row;
+                        int offset;
+                        if (1 == l.cardi) {
+                            cardi_in_a_row = get_cardi_max(l.classes);
+                            offset = n * get_cardi_max(l.classes);
+                        } else if (2 == l.cardi) {
+                            cardi_in_a_row = cardi_distribution[n];
+                            offset = get_acc_cardi_offset(n);
+                        }
+                        for (k = 0; k < cardi_in_a_row; ++k) {
+                            printf("%0.3f ", l.cardi_binary[offset + k]);
+                        }
+                        printf("\r\n");
+                        printf("[%d] o: ", n);
+                        for (k = 0; k < cardi_in_a_row; ++k) {
+                            printf("%.3f ", l.output[card_index + offset + k]);
+                        }
+                        printf("\r\n");
+                    }
                 }
             }
             /* End of modification minming */
-        }
 
-        print_l_information(l);
+        }
 
         if(0){
             float *costs = calloc(l.batch*locations*l.n, sizeof(float));
@@ -328,10 +405,7 @@ void forward_detection_layer(const detection_layer l, network_state state)
             free(costs);
         }
 
-//        printf("cost before: %f\r\n", *(l.cost));
         *(l.cost) = pow(mag_array(l.delta, l.outputs * l.batch), 2);
-        printf("cost after: %f\r\n", *(l.cost));
-
 
         printf("Detection Avg IOU: %f, Pos Cat: %f, All Cat: %f, Pos Obj: %f, Any Obj: %f, count: %d\n", avg_iou/count, avg_cat/count, avg_allcat/(count*l.classes), avg_obj/count, avg_anyobj/(l.batch*locations*l.n), count);
         //if(l.reorg) reorg(l.delta, l.w*l.h, size*l.n, l.batch, 0);
@@ -372,6 +446,113 @@ void get_detection_boxes(layer l, int w, int h, float thresh, float **probs, box
     }
 }
 
+
+int get_index_of_max_value(const float *predicitons, int cardi_index, int offset) {
+    float max = 0.0;
+    int index = 0;
+    int i;
+    printf("cardi prob ");
+    for (i = cardi_index; i < cardi_index + offset; ++i) {
+        if (predicitons[i] > max) {
+            max = predicitons[i];
+            index = i;
+        }
+        printf(" %f", predicitons[i]);
+    }
+    printf("\n");
+    return index - cardi_index;
+}
+
+void get_detection_boxes_and_cardinality_align(layer l, int w, int h, float thresh, float **probs, box *boxes,
+                                               int only_objectness, float *cardinalities)
+{
+    int i,j,n,m;
+    float *predictions = l.output;
+    //int per_cell = 5*num+classes;
+    for (i = 0; i < l.side*l.side; ++i){
+        int row = i / l.side;
+        int col = i % l.side;
+        for(n = 0; n < l.n; ++n){
+            int index = i*l.n + n;
+            int p_index = l.side*l.side*l.classes + i*l.n + n;
+            float scale = predictions[p_index];
+            int box_index = l.side*l.side*(l.classes + l.n) + (i*l.n + n)*4;
+            boxes[index].x = (predictions[box_index + 0] + col) / l.side * w;
+            boxes[index].y = (predictions[box_index + 1] + row) / l.side * h;
+            boxes[index].w = pow(predictions[box_index + 2], (l.sqrt?2:1)) * w;
+            boxes[index].h = pow(predictions[box_index + 3], (l.sqrt?2:1)) * h;
+            for(j = 0; j < l.classes; ++j){
+                int class_index = i*l.classes;
+                float prob = scale*predictions[class_index+j];
+                probs[index][j] = (prob > thresh) ? prob : 0;
+            }
+            if(only_objectness){
+                probs[index][0] = scale;
+            }
+        }
+    }
+
+    //added for cardinality
+    for (m = 0; m < l.classes; ++m) {
+        //对于固定的长度的，就是用21，每个长度都是21，对于非固定长度的，需要设置不同的offset
+        int offset = get_cardi_max(l.classes);
+        int cardi_index = l.side * l.side * (l.classes + l.n*(l.coords + 1)) + offset * m;
+        printf("cardi index %d, l.outputs %d\n", cardi_index, l.outputs);
+        printf("[%d]", m);
+        cardinalities[m] = get_index_of_max_value(predictions, cardi_index, offset);
+
+        int k;
+//        for (k = 0; k < 21; ++k) {
+//            cardinalities[offset*m + k] = predictions[cardi_index + k];
+//        }
+    }
+}
+
+void get_detection_boxes_and_cardinality_unalign(layer l, int w, int h, float thresh, float **probs, box *boxes,
+                                               int only_objectness, float *cardinalities)
+{
+    int i,j,n,m;
+    float *predictions = l.output;
+    //int per_cell = 5*num+classes;
+    for (i = 0; i < l.side*l.side; ++i){
+        int row = i / l.side;
+        int col = i % l.side;
+        for(n = 0; n < l.n; ++n){
+            int index = i*l.n + n;
+            int p_index = l.side*l.side*l.classes + i*l.n + n;
+            float scale = predictions[p_index];
+            int box_index = l.side*l.side*(l.classes + l.n) + (i*l.n + n)*4;
+            boxes[index].x = (predictions[box_index + 0] + col) / l.side * w;
+            boxes[index].y = (predictions[box_index + 1] + row) / l.side * h;
+            boxes[index].w = pow(predictions[box_index + 2], (l.sqrt?2:1)) * w;
+            boxes[index].h = pow(predictions[box_index + 3], (l.sqrt?2:1)) * h;
+            for(j = 0; j < l.classes; ++j){
+                int class_index = i*l.classes;
+                float prob = scale*predictions[class_index+j];
+                probs[index][j] = (prob > thresh) ? prob : 0;
+            }
+            if(only_objectness){
+                probs[index][0] = scale;
+            }
+        }
+    }
+
+    //added for cardinality
+    for (m = 0; m < l.classes; ++m) {
+        //对于固定的长度的，就是用21，每个长度都是21，对于非固定长度的，需要设置不同的offset
+        int offset = cardi_distribution[l.classes];
+        int acc_offset = get_acc_cardi_offset(m);
+        int cardi_index = l.side * l.side * (l.classes + l.n*(l.coords + 1)) +  acc_offset;
+        printf("cardi index %d, l.outputs %d\n", cardi_index, l.outputs);
+        printf("[%d]", m);
+        cardinalities[m] = get_index_of_max_value(predictions, cardi_index, offset);
+
+//        int k;
+//        for (k = 0; k < 21; ++k) {
+//            cardinalities[offset*m + k] = predictions[cardi_index + k];
+//        }
+    }
+}
 
 void get_detection_boxes_nonms(layer l, int w, int h, float thresh, float **probs, box *boxes, int only_objectness)
 {
