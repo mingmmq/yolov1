@@ -17,5 +17,6 @@ void do_nms(box *boxes, float **probs, int total, int classes, float thresh);
 void do_nms_sort(box *boxes, float **probs, int total, int classes, float thresh);
 box decode_box(box b, box anchor);
 box encode_box(box b, box anchor);
+void do_cardi_filter(box *boxes, float **probs, int grids, int n, int classes, float *cardinalities);
 
 #endif

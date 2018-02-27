@@ -624,3 +624,50 @@ float **one_hot_encode(float *a, int n, int k)
 }
 
 
+int max_index_grid(float **probs, int num, int class) {
+    int i, max_i = 0;
+    float max = probs[0][class];
+    for(i = 1; i < num; ++i){
+        if(probs[i][class] > max){
+            max = probs[i][class];
+            max_i = i;
+        }
+    }
+    printf("max prob is %f ", max);
+    return max_i;
+}
+
+void clear_probs(float ** probs, int grid, int class, int n, int grids){
+    int i;
+    int j;
+    for (j = 0; j < 20; ++j) {
+        probs[grid + grids * i][j] = 0;
+    }
+    grid = grid % grids;
+    //同一个grid里面的 不同层面的都要清除掉的
+    for (i = 0; i < n; ++i) {
+        probs[grid + grids * i][class] = 0;
+    }
+}
+
+void print_probs(float **probs, int grids, int class, char *head){
+    int i;
+    printf(head);
+    printf(" probs for classes[%d]", class);
+    for (i = 0; i < grids; ++i) {
+        printf(" %f", probs[i][class]);
+    }
+    printf("\n");
+}
+
+float get_max(float **probs, int class){
+    int i;
+    float max = 0;
+    for (i = 0; i < 49 * 3; ++i) {
+        if (probs[i][class] > max) {
+            max = probs[i][class];
+        }
+    }
+
+    return max;
+}

@@ -497,7 +497,7 @@ void get_detection_boxes_and_cardinality_align(layer l, int w, int h, float thre
         //对于固定的长度的，就是用21，每个长度都是21，对于非固定长度的，需要设置不同的offset
         int offset = get_cardi_max(l.classes);
         int cardi_index = l.side * l.side * (l.classes + l.n*(l.coords + 1)) + offset * m;
-        printf("cardi index %d, l.outputs %d\n", cardi_index, l.outputs);
+//        printf("cardi index %d, l.outputs %d\n", cardi_index, l.outputs);
         printf("[%d]", m);
         cardinalities[m] = get_index_of_max_value(predictions, cardi_index, offset);
 
@@ -540,10 +540,10 @@ void get_detection_boxes_and_cardinality_unalign(layer l, int w, int h, float th
     //added for cardinality
     for (m = 0; m < l.classes; ++m) {
         //对于固定的长度的，就是用21，每个长度都是21，对于非固定长度的，需要设置不同的offset
-        int offset = cardi_distribution[l.classes];
+        int offset = cardi_distribution[m];
         int acc_offset = get_acc_cardi_offset(m);
         int cardi_index = l.side * l.side * (l.classes + l.n*(l.coords + 1)) +  acc_offset;
-        printf("cardi index %d, l.outputs %d\n", cardi_index, l.outputs);
+//        printf("cardi index %d, l.outputs %d\n", cardi_index, l.outputs);
         printf("[%d]", m);
         cardinalities[m] = get_index_of_max_value(predictions, cardi_index, offset);
 

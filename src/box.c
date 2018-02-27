@@ -1,4 +1,5 @@
 #include "box.h"
+#include "utils.h"
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
@@ -244,6 +245,48 @@ int nms_comparator(const void *pa, const void *pb)
     if(diff < 0) return 1;
     else if(diff > 0) return -1;
     return 0;
+}
+
+
+void do_cardi_filter(box *boxes, float **probs, int grids, int n, int classes, float *cardinalities)
+{
+    int i, k, b;
+    int total = grids * n;
+
+    float **new_probs = calloc(grids*n, sizeof(float *));
+    for(b = 0; b < grids*n; ++b) new_probs[b] = calloc(classes, sizeof(float *));
+
+    for(k = 0; k < classes; ++k){
+        int last_index = 0;
+        for(i = 0; i < cardinalities[k]; ++i){
+            printf("class is %d, total is %d,", k, total);
+            int grid_index = max_index_grid(probs, total, k);
+            //这一步必不可少啊，也算做了supperision
+            if (last_index != 0 && box_iou(boxes[grid_index], boxes[last_index]) > 0.5) {
+                clear_probs(probs, grid_index, k, n, grids);
+                printf("clear here %d\n", grid_index);
+                k -=1;
+                continue;
+            }
+
+            last_index = grid_index;
+            printf("the grid is %d \n", grid_index);
+            new_probs[grid_index][k] = probs[grid_index][k];
+            clear_probs(probs, grid_index, k, n, grids);
+        }
+    }
+
+    for(b = 0; b < grids*n; ++b) free(probs[b]);
+    for(b = 0; b < grids*n; ++b) probs[b] = new_probs[b];
+
+//    printf("new probs\n");
+//    for(b = 0; b < grids*n; ++b) {
+//        int j;
+//        for (j = 0; j < classes; ++j) {
+//            printf("%f ", probs[b][j]);
+//        }
+//        printf("\n");
+//    }
 }
 
 void do_nms_sort(box *boxes, float **probs, int total, int classes, float thresh)

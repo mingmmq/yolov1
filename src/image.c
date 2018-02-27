@@ -220,6 +220,74 @@ void draw_detections(image im, int num, float thresh, box *boxes, float **probs,
     }
 }
 
+
+void draw_detections_by_cardi(image im, int grids, int n, float thresh, box *boxes, float **probs, char **names,
+                              image **alphabet, int classes, float *cardinalities)
+{
+    int i, j, k;
+    int num = grids * n;
+
+    for (j = 0; j < classes; ++j) {
+        print_probs(probs, num, j, "before");
+        printf("[%d] max prob %f\n", j, get_max(probs, j));
+        int last_index = 0;
+        //这里可以测试ground truth的效果
+//        cardinalities[9] = 4;
+        for (k = 0; k < cardinalities[j]; ++k) {
+            //这里预测的是每个格子里面只能有一个物品，万一两个东西在同一个里面呢,也是能够的，
+//                int class = max_index(probs[i], classes);
+            int grid_index = max_index_grid(probs, num, j);
+
+            //这一步必不可少啊，也算做了supperision
+            if (last_index != 0 && box_iou(boxes[grid_index], boxes[last_index]) > 0.5) {
+                clear_probs(probs, grid_index, j, n, grids);
+                printf("clear here %d\n", grid_index);
+                k -=1;
+                continue;
+            }
+
+
+            last_index = grid_index;
+            printf("the grid is %d \n", grid_index);
+            float prob = probs[grid_index][j];
+            clear_probs(probs, grid_index, j, n, grids);
+//            print_probs(probs, num, j, "after");
+
+            //int width = pow(prob, 1./2.)*30+1;
+            int width = im.h * .012;
+            printf("%s: %.0f%%\n", names[j], prob * 100);
+            int offset = j * 1 % classes;
+            float red = get_color(2, offset, classes);
+            float green = get_color(1, offset, classes);
+            float blue = get_color(0, offset, classes);
+            float rgb[3];
+
+            //width = prob*20+2;
+
+            rgb[0] = red;
+            rgb[1] = green;
+            rgb[2] = blue;
+            box b = boxes[grid_index];
+
+            int left = (b.x - b.w / 2.) * im.w;
+            int right = (b.x + b.w / 2.) * im.w;
+            int top = (b.y - b.h / 2.) * im.h;
+            int bot = (b.y + b.h / 2.) * im.h;
+
+            if (left < 0) left = 0;
+            if (right > im.w - 1) right = im.w - 1;
+            if (top < 0) top = 0;
+            if (bot > im.h - 1) bot = im.h - 1;
+
+            draw_box_width(im, left, top, right, bot, width, red, green, blue);
+            if (alphabet) {
+                image label = get_label(alphabet, names[j], (im.h * .03) / 10);
+                draw_label(im, top + width, left, label, rgb);
+            }
+        }
+    }
+}
+
 void transpose_image(image im)
 {
     assert(im.w == im.h);

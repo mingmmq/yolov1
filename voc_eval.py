@@ -6,7 +6,7 @@
 
 import xml.etree.ElementTree as ET
 import os
-import cPickle
+import _pickle as cPickle
 import numpy as np
 
 def parse_rec(filename):
@@ -108,15 +108,15 @@ def voc_eval(detpath,
         for i, imagename in enumerate(imagenames):
             recs[imagename] = parse_rec(annopath.format(imagename))
             if i % 100 == 0:
-                print 'Reading annotation for {:d}/{:d}'.format(
-                    i + 1, len(imagenames))
+                print('Reading annotation for {:d}/{:d}'.format(
+                    i + 1, len(imagenames)))
         # save
-        print 'Saving cached annotations to {:s}'.format(cachefile)
+        print('Saving cached annotations to {:s}'.format(cachefile))
         with open(cachefile, 'w') as f:
             cPickle.dump(recs, f)
     else:
         # load
-        with open(cachefile, 'r') as f:
+        with open(cachefile, 'rb') as f:
             recs = cPickle.load(f)
 
     # extract gt objects for this class
@@ -125,7 +125,7 @@ def voc_eval(detpath,
     distribution = {}
     for imagename in imagenames:
         number = len(recs[imagename])
-        if not distribution.has_key(number):
+        if number not in distribution.keys():
             distribution[number] = 1
         else:
             distribution[number] += 1
@@ -207,8 +207,6 @@ def voc_eval(detpath,
     for index ,thresh in enumerate(np.arange(0.99, -0.01, -0.01)):
         fps.append(0.0)
         tps.append(0.0)
-        # indexs.append(index)
-
 
     for index ,thresh in enumerate(np.arange(0.99, -0.01, -0.01)):
         current = 0
@@ -228,17 +226,14 @@ def voc_eval(detpath,
 
             current += 1
 
-    # compute precision recall
+    # compute precision recall, 这是对于所有的proposal来说
     fp = np.cumsum(fp)
     tp = np.cumsum(tp)
 
+    # 这是对于0.99到0 的不同点来说的
     fps = np.cumsum(fps)
     tps = np.cumsum(tps)
-    recs = tps / float(npos)
-    precs = tps / np.maximum(tps + fps, np.finfo(np.float64).eps)
-
-    #change this will be fine, the fp, tp can be modified
-    #
+    
     rec = tp / float(npos)
     # avoid divide by zero in case the first detection matches a difficult
     # ground truth
