@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # --------------------------------------------------------
 # Fast/er R-CNN
 # Licensed under The MIT License [see LICENSE for details]
@@ -6,7 +7,11 @@
 
 import xml.etree.ElementTree as ET
 import os
-import _pickle as cPickle
+import sys
+if sys.version_info[0] < 3:
+    import cPickle
+else:
+    import _pickle as cPickle
 import numpy as np
 
 def parse_rec(filename):
@@ -78,7 +83,7 @@ def voc_eval(detpath,
     Top level function that does the PASCAL VOC evaluation.
 
     detpath: Path to detections
-        detpath.format(classname) should produce the detection results file.
+        detpath.format(classname) should produce the detection results_nis3 file.
     annopath: Path to annotations
         annopath.format(imagename) should be the xml annotations file.
     imagesetfile: Text file containing the list of images, one image per line.
@@ -222,7 +227,6 @@ def voc_eval(detpath,
                 # print("confident[{}]: {}".format(i, confidence[i]))
                 fps[index] += fp[current]
                 tps[index] += tp[current]
-
 
             current += 1
 

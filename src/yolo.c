@@ -127,6 +127,53 @@ void print_yolo_detections(FILE **fps, char *id, box *boxes, float **probs, int 
     }
 }
 
+void print_yolo_detections_max(FILE **fps, char *id, box *boxes, float **probs, int grids, int n, int classes, int w, int h)
+{
+    int m, j;
+    int k;
+    float *max_prob = calloc(classes, sizeof(float));
+    char **sps = calloc(classes, sizeof(char *));
+    int i1;
+    for (i1 = 0; i1 < classes; ++i1) {
+         sps[i1] = calloc(300, sizeof(char));
+    }
+    for (k = 0; k < grids; ++k) {
+        memset(max_prob, 0, classes*sizeof(float));
+        for (m = 0; m < n; ++m) {
+            int i =  k*n + m;
+            float xmin = boxes[i].x - boxes[i].w / 2.;
+            float xmax = boxes[i].x + boxes[i].w / 2.;
+            float ymin = boxes[i].y - boxes[i].h / 2.;
+            float ymax = boxes[i].y + boxes[i].h / 2.;
+
+            if (xmin < 0) xmin = 0;
+            if (ymin < 0) ymin = 0;
+            if (xmax > w) xmax = w;
+            if (ymax > h) ymax = h;
+
+            for (j = 0; j < classes; ++j) {
+                if(m == 0) {
+                    sprintf(sps[j], "%s %f %f %f %f %f\n", id, probs[i][j],
+                            xmin, ymin, xmax, ymax);
+                }
+                //这是由于pythond的括号不写的缘故, 导致下面的坐标都没有正确的更新，虽然max后面改了更新了
+                if (probs[i][j] >= max_prob[j]) {
+                    max_prob[j] = probs[i][j];
+                    sprintf(sps[j], "%s %f %f %f %f %f\n", id, probs[i][j],
+                            xmin, ymin, xmax, ymax);
+                }
+            }
+        }
+
+        int l;
+        for (l = 0; l < classes; ++l) {
+            fprintf(fps[l], sps[l]);
+        }
+    }
+
+    free(max_prob);
+}
+
 void validate_yolo(char *cfgfile, char *weightfile)
 {
     network net = parse_network_cfg(cfgfile);
@@ -390,12 +437,12 @@ void validate_yolo_grid_all(char *cfgfile, char *weightfile)
             network_predict(net, X);
             int w = val[t].w;
             int h = val[t].h;
-            //todo 1 keep all the predictions
+            //todo 1 keep all the predictions, nothing changed the negative ones are removed
             get_detection_boxes_nonms(l, w, h, thresh, probs, boxes, 0);
             //todo 2 remove the nms part, instead we are using cardinality
-            if (nms) do_nms_sort(boxes, probs, l.side*l.side*l.n, classes, iou_thresh);
+//            if (nms) do_nms_sort(boxes, probs, l.side*l.side*l.n, classes, iou_thresh);
             //todo 3: save the result file not change
-            print_yolo_detections(fps, id, boxes, probs, l.side*l.side*l.n, classes, w, h);
+            print_yolo_detections_max(fps, id, boxes, probs, l.side*l.side, l.n, classes, w, h);
             free(id);
             free_image(val[t]);
             free_image(val_resized[t]);
@@ -570,9 +617,40 @@ void validate_yolo_recall(char *cfgfile, char *weightfile)
     }
 }
 
+void print_cardi_dist(float **cardi_dist, int classes, char *head) {
+    int cardi_distribution[20] = {17, 7, 28, 15, 21, 7, 13, 6, 21, 13, 10, 9, 8, 10, 18, 20, 22, 6, 6, 33};
+    printf(head);
+    printf("\n");
+    int i;
+    for (i = 0; i < classes; ++i) {
+        printf("%s, \t", voc_names[i]);
+        int j;
+        for (j = 0; j < cardi_distribution[i]; ++j) {
+            printf("%3d, ", (int)cardi_dist[i][j]);
+        }
+        printf("\n");
+    }
+}
+
+void print_cardi_dist_float(float **cardi_dist, int classes, char *head) {
+    int cardi_distribution[20] = {17, 7, 28, 15, 21, 7, 13, 6, 21, 13, 10, 9, 8, 10, 18, 20, 22, 6, 6, 33};
+    printf(head);
+    printf("\n");
+    int i;
+    for (i = 0; i < classes; ++i) {
+        int j;
+        printf("%s, \t", voc_names[i]);
+        for (j = 0; j < cardi_distribution[i]; ++j) {
+            printf("%.4f, ", cardi_dist[i][j]);
+        }
+        printf("\n");
+    }
+}
+
 
 void validate_yolo_cardi_verify(char *cfgfile, char *weightfile)
 {
+    int cardi_distribution[20] = {17, 7, 28, 15, 21, 7, 13, 6, 21, 13, 10, 9, 8, 10, 18, 20, 22, 6, 6, 33};
     network net = parse_network_cfg(cfgfile);
     if(weightfile){
         load_weights(&net, weightfile);
@@ -605,12 +683,31 @@ void validate_yolo_cardi_verify(char *cfgfile, char *weightfile)
     int l2;
     for (l2 = 0; l2 < plist->size; ++l2) cardi_all[l2] = calloc(classes, sizeof(float));
     float *truth_cardi = calloc(l.classes, sizeof(float));
+
     float **truth_all = calloc(plist->size, sizeof(float *));
     for (l2 = 0; l2 < plist->size; ++l2) truth_all[l2] = calloc(classes, sizeof(float));
+
     float *errors = calloc(l.classes, sizeof(float));
     float *mean_errors = calloc(l.classes, sizeof(float));
     float *gt_cardi_sum = calloc(l.classes, sizeof(float));
     float *pr_cardi_sum = calloc(l.classes, sizeof(float));
+
+
+    float **gt_cardi_distribution = calloc(l.classes, sizeof(float *));
+    float **pr_cardi_distribution = calloc(l.classes, sizeof(float *));
+    float **er_cardi_distribution = calloc(l.classes, sizeof(float *));
+    float **mean_er_cardi_dist = calloc(l.classes, sizeof(float *));
+    float **std_dev_cardi_dist = calloc(l.classes, sizeof(float *));
+
+    int j3;
+    for (j3 = 0; j3 < l.classes; ++j3) {
+        gt_cardi_distribution[j3] = calloc(cardi_distribution[j3], sizeof(float));
+        pr_cardi_distribution[j3] = calloc(cardi_distribution[j3], sizeof(float));
+        er_cardi_distribution[j3] = calloc(cardi_distribution[j3], sizeof(float));
+        mean_er_cardi_dist[j3] = calloc(cardi_distribution[j3], sizeof(float));
+        std_dev_cardi_dist[j3] = calloc(cardi_distribution[j3], sizeof(float));
+    }
+
 
 
     int m = plist->size;
@@ -668,12 +765,32 @@ void validate_yolo_cardi_verify(char *cfgfile, char *weightfile)
             truth_cardi[truth[j].id] += 1;
         }
 
+
+        //collect the cardinality information
         printf("i is %d\n", i);
         int j2;
         for (j2 = 0; j2 < l.classes; ++j2) {
             cardi_all[i][j2] = cardinalities[j2];
             truth_all[i][j2] = truth_cardi[j2];
+
+            int gt_cardi = truth_cardi[j2];
+            int pr_cardi = cardinalities[j2];
+            gt_cardi_distribution[j2][gt_cardi] += 1;
+            pr_cardi_distribution[j2][pr_cardi] += 1;
+
+            int i1;
+            for (i1 = 0; i1 < cardi_distribution[j2]; ++i1) {
+                if ((gt_cardi == i1 && pr_cardi != i1) || (gt_cardi != i1 && pr_cardi == i1)) {
+                    er_cardi_distribution[j2][i1] += 1;
+                }
+                mean_er_cardi_dist[j2][i1] = er_cardi_distribution[j2][i1] / (i+1);
+            }
         }
+
+        print_cardi_dist(gt_cardi_distribution, l.classes, "gt");
+        print_cardi_dist(pr_cardi_distribution, l.classes, "prediction");
+        print_cardi_dist(er_cardi_distribution, l.classes, "error");
+        print_cardi_dist_float(mean_er_cardi_dist, l.classes, "mean");
 
         printf("truth:");
         int l1;
@@ -741,6 +858,29 @@ void validate_yolo_cardi_verify(char *cfgfile, char *weightfile)
         free_image(sized);
     }
 
+    for (i = 0; i < m; ++i) {
+        int n;
+        for (n = 0; n < l.classes; ++n) {
+            int i1;
+            for (i1 = 0; i1 < cardi_distribution[n]; ++i1) {
+                if (cardi_all[i][n] != truth_all[i][n] && (cardi_all[i][n] == i1 || truth_all[i][n] == i1) ) {
+                    std_dev_cardi_dist[n][i1] += pow((1 - mean_er_cardi_dist[n][i1]), 2);
+                } else {
+                    std_dev_cardi_dist[n][i1] += pow((0 - mean_er_cardi_dist[n][i1]), 2);
+                }
+            }
+        }
+    }
+    int n;
+    for (n = 0; n < l.classes; ++n) {
+        int i1;
+        for (i1 = 0; i1 < cardi_distribution[n]; ++i1) {
+            std_dev_cardi_dist[n][i1] = pow(std_dev_cardi_dist[n][i1]/(m-1), 0.5);
+        }
+    }
+    print_cardi_dist_float(std_dev_cardi_dist, l.classes, "std_dev");
+
+
     int i2;
     for (i2 = 0; i2 < l.classes; ++i2) {
         error_total += errors[i2];
@@ -758,10 +898,10 @@ void validate_yolo_cardi_verify(char *cfgfile, char *weightfile)
         }
     }
     int m2;
-    printf("std_dev");
+    printf("std_dev, ");
     for (m2 = 0; m2 < l.classes; ++m2) {
         float std_dev = (float) pow(errors[m2] / (m - 1), 0.5);
-        printf(" %f", std_dev);
+        printf(" %f, ", std_dev);
     }
     printf("\n");
 
@@ -1182,7 +1322,7 @@ void run_yolo(int argc, char **argv)
     else if(0==strcmp(argv[2], "valid_cardi")) validate_yolo_cardi_print(cfg, weights);
     else if(0==strcmp(argv[2], "recall")) validate_yolo_recall(cfg, weights);
     else if(0==strcmp(argv[2], "recall_cardi")) validate_yolo_cardi_recall(cfg, weights);
-    else if(0==strcmp(argv[2], "grid")) validate_yolo_grid_all(cfg, weights);
+    else if(0==strcmp(argv[2], "valid_grid")) validate_yolo_grid_all(cfg, weights);
     else if(0==strcmp(argv[2], "cardi")) validate_yolo_print_cardi(cfg, weights);
     else if(0==strcmp(argv[2], "valid_gt")) validate_yolo_cardi_gt(cfg, weights);
     else if(0==strcmp(argv[2], "verify")) validate_yolo_cardi_verify(cfg, weights);

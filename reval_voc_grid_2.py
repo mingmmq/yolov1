@@ -21,8 +21,8 @@ def parse_args():
     """
     Parse input arguments
     """
-    parser = argparse.ArgumentParser(description='Re-evaluate results')
-    parser.add_argument('output_dir', nargs=1, help='results directory',
+    parser = argparse.ArgumentParser(description='Re-evaluate results_nis3')
+    parser.add_argument('output_dir', nargs=1, help='results_nis3 directory',
                         type=str)
     parser.add_argument('--voc_dir', dest='voc_dir', default='data/VOCdevkit', type=str)
     parser.add_argument('--year', dest='year', default='2007', type=str)
@@ -37,7 +37,7 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-def get_voc_results_file_template(image_set, out_dir = 'results'):
+def get_voc_results_file_template(image_set, out_dir = 'results_nis3'):
     filename = 'comp4_det_' + image_set + '_{:s}.txt'
     path = os.path.join(out_dir, filename)
     return path
@@ -67,7 +67,7 @@ def show_pr_curve(precision, recall, gt_prec, gt_rec, cat):
 
     pass
 
-def do_python_eval(devkit_path, year, image_set, classes, output_dir = 'results'):
+def do_python_eval(devkit_path, year, image_set, classes, output_dir = 'results_nis3'):
     annopath = os.path.join(
         devkit_path,
         'VOC' + year,

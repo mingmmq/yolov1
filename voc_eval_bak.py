@@ -78,7 +78,7 @@ def voc_eval(detpath,
     Top level function that does the PASCAL VOC evaluation.
 
     detpath: Path to detections
-        detpath.format(classname) should produce the detection results file.
+        detpath.format(classname) should produce the detection results_nis3 file.
     annopath: Path to annotations
         annopath.format(imagename) should be the xml annotations file.
     imagesetfile: Text file containing the list of images, one image per line.

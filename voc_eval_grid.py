@@ -6,13 +6,35 @@
 
 import xml.etree.ElementTree as ET
 import os
-import cPickle
+import sys
+if sys.version_info[0] < 3:
+    import cPickle
+else:
+    import _pickle as cPickle
 import numpy as np
+import math
+
+def parse_size(filename):
+    """ Parse a PASCAL VOC xml file """
+    tree = ET.parse(filename)
+    objects = []
+
+    size = tree.find('size')
+    size_struct = []
+    size_struct = [int(size.find("width").text), int(size.find("height").text)]
+    return size_struct
+
 
 def parse_rec(filename):
     """ Parse a PASCAL VOC xml file """
     tree = ET.parse(filename)
     objects = []
+
+    size = tree.find('size')
+    size_struct = []
+    size_struct = [int(size.find("width").text), int(size.find("height").text)]
+
+
     for obj in tree.findall('object'):
         obj_struct = {}
         obj_struct['name'] = obj.find('name').text
@@ -24,9 +46,44 @@ def parse_rec(filename):
                               int(bbox.find('ymin').text),
                               int(bbox.find('xmax').text),
                               int(bbox.find('ymax').text)]
+        obj_struct['size'] = size_struct
         objects.append(obj_struct)
 
     return objects
+
+def get_grid_number_by_center_size(size, bbox, imagename):
+    width_dict = {}
+    height_dict = {}
+
+    center_x = math.floor(bbox[0])
+    center_y = math.floor(bbox[1])
+
+    for i in range(size[0]):
+        width_dict[i] =  math.floor(i / (size[0] / 7))
+
+    for i in range(size[1]):
+        height_dict[i] = math.floor(i / (size[1] / 7))
+
+    grid = width_dict[center_x]  + height_dict[center_y] * 7
+
+    return grid
+
+def get_grid_number(size, bbox, imagename):
+    width_dict = {}
+    height_dict = {}
+
+    center_x = math.floor((bbox[0] + bbox[2])/2)
+    center_y = math.floor((bbox[1] + bbox[3])/2)
+
+    for i in range(size[0]):
+        width_dict[i] =  math.floor(i / (size[0] / 7))
+
+    for i in range(size[1]):
+        height_dict[i] = math.floor(i / (size[1] / 7))
+
+    grid = width_dict[center_x]  + height_dict[center_y] * 7
+
+    return grid
 
 def voc_ap(rec, prec, use_07_metric=False):
     """ ap = voc_ap(rec, prec, [use_07_metric])
@@ -78,7 +135,7 @@ def voc_eval(detpath,
     Top level function that does the PASCAL VOC evaluation.
 
     detpath: Path to detections
-        detpath.format(classname) should produce the detection results file.
+        detpath.format(classname) should produce the detection results_nis3 file.
     annopath: Path to annotations
         annopath.format(imagename) should be the xml annotations file.
     imagesetfile: Text file containing the list of images, one image per line.
@@ -96,7 +153,136 @@ def voc_eval(detpath,
     # first load gt
     if not os.path.isdir(cachedir):
         os.mkdir(cachedir)
-    cachefile = os.path.join(cachedir, 'annots.pkl')
+    cachefile = os.path.join(cachedir, 'annots_with_size.pkl')
+    # read list of images
+    with open(imagesetfile, 'r') as f:
+        lines = f.readlines()
+    imagenames = [x.strip() for x in lines]
+
+    if not os.path.isfile(cachefile):
+    # load annots
+        recs = {}
+        for i, imagename in enumerate(imagenames):
+            recs[imagename] = parse_rec(annopath.format(imagename))
+            if i % 100 == 0:
+                print('Reading annotation for {:d}/{:d}'.format(
+                    i + 1, len(imagenames)))
+        # save
+        print('Saving cached annotations to {:s}'.format(cachefile))
+        with open(cachefile, 'wb') as f:
+            cPickle.dump(recs, f)
+
+    else:
+        # load
+        with open(cachefile, 'rb') as f:
+            recs = cPickle.load(f)
+    #
+    # extract gt objects for this class
+    class_recs = {}
+    npos = 0
+    for imagename in imagenames:
+        R = [obj for obj in recs[imagename] if obj['name'] == classname]
+        bbox = np.array([x['bbox'] for x in R])
+        difficult = np.array([x['difficult'] for x in R]).astype(np.bool)
+        det = [False] * len(R)
+        size = np.array([x['size'] for x in R])
+        npos = npos + sum(~difficult)
+        class_recs[imagename] = {'bbox': bbox,
+                                 'difficult': difficult,
+                                 'det': det,
+                                 'size': size}
+
+    # read dets, detections
+    detfile = detpath.format(classname)
+    with open(detfile, 'r') as f:
+        lines = f.readlines()
+
+    splitlines = [x.strip().split(' ') for x in lines]
+    image_ids = [x[0] for x in splitlines]
+    confidence = np.array([float(x[1]) for x in splitlines])
+    BB = np.array([[float(z) for z in x[2:]] for x in splitlines])
+
+    # todo, don't need sort, but I need the threshold, sort by confidence, no need to sort, instead, we need the
+    # go down dets and mark TPs and FPs, 这里是全部的长度，是4952 * 147 ， 但是我要的是 4952 * 49, check for each class
+
+    nd = len(image_ids)
+    tp = np.zeros(nd)
+    fp = np.zeros(nd)
+
+    gt = np.zeros(len(imagenames) * 49)
+    for i, imagename in enumerate(imagenames):
+        R = class_recs[imagename]
+        BBGT = R['bbox'].astype(float)
+        size = R['size']
+        difficult = R['difficult']
+        for k, bbgt in enumerate(BBGT):
+            grid = get_grid_number(size[0], bbgt, imagename)
+            if ~difficult[k]:
+                gt[i*49+grid] = 1
+
+    recs = []
+    precs = []
+
+    tpsum = []
+    fpsum = []
+    gtsum = []
+
+    for index ,thresh in enumerate(np.arange(0.99, -0.01, -0.01)):
+        #the confidence here can represent the detection
+        det = confidence > thresh
+
+        tp[np.where(det + gt  == 2)] = 1
+        fp[np.where(det - gt == 1)] = 1
+    # avoid divide by zero in case the first detection matches a difficult
+    # ground truth
+        recal = np.sum(tp) / np.sum(gt)
+        prec = np.sum(tp) /np.maximum(np.sum(tp + fp), np.finfo(np.float64).eps)
+
+        recs += [recal]
+        precs += [prec]
+
+        tpsum += [np.sum(tp)]
+        fpsum += [np.sum(fp)]
+        gtsum += [np.sum(gt)]
+
+    return recs, precs, tpsum, fpsum, gtsum
+
+def voc_eval_cardi(detpath,
+             annopath,
+             imagesetfile,
+             classname,
+             cachedir,
+             ovthresh=0.5,
+             use_07_metric=False):
+    """rec, prec, ap = voc_eval(detpath,
+                                annopath,
+                                imagesetfile,
+                                classname,
+                                [ovthresh],
+                                [use_07_metric])
+
+    Top level function that does the PASCAL VOC evaluation.
+
+    detpath: Path to detections
+        detpath.format(classname) should produce the detection results_nis3 file.
+    annopath: Path to annotations
+        annopath.format(imagename) should be the xml annotations file.
+    imagesetfile: Text file containing the list of images, one image per line.
+    classname: Category name (duh)
+    cachedir: Directory for caching the annotations
+    [ovthresh]: Overlap threshold (default = 0.5)
+    [use_07_metric]: Whether to use VOC07's 11 point AP computation
+        (default False)
+    """
+    # assumes detections are in detpath.format(classname)
+    # assumes annotations are in annopath.format(imagename)
+    # assumes imagesetfile is a text file with each line an image name
+    # cachedir caches the annotations in a pickle file
+
+    # first load gt
+    if not os.path.isdir(cachedir):
+        os.mkdir(cachedir)
+    cachefile = os.path.join(cachedir, 'annots_with_size.pkl')
     # read list of images
     with open(imagesetfile, 'r') as f:
         lines = f.readlines()
@@ -108,17 +294,18 @@ def voc_eval(detpath,
         for i, imagename in enumerate(imagenames):
             recs[imagename] = parse_rec(annopath.format(imagename))
             if i % 100 == 0:
-                print 'Reading annotation for {:d}/{:d}'.format(
-                    i + 1, len(imagenames))
+                print('Reading annotation for {:d}/{:d}'.format(
+                    i + 1, len(imagenames)))
         # save
-        print 'Saving cached annotations to {:s}'.format(cachefile)
-        with open(cachefile, 'w') as f:
+        print('Saving cached annotations to {:s}'.format(cachefile))
+        with open(cachefile, 'wb') as f:
             cPickle.dump(recs, f)
+
     else:
         # load
-        with open(cachefile, 'r') as f:
+        with open(cachefile, 'rb') as f:
             recs = cPickle.load(f)
-
+    #
     # extract gt objects for this class
     class_recs = {}
     npos = 0
@@ -127,12 +314,14 @@ def voc_eval(detpath,
         bbox = np.array([x['bbox'] for x in R])
         difficult = np.array([x['difficult'] for x in R]).astype(np.bool)
         det = [False] * len(R)
+        size = np.array([x['size'] for x in R])
         npos = npos + sum(~difficult)
         class_recs[imagename] = {'bbox': bbox,
                                  'difficult': difficult,
-                                 'det': det}
+                                 'det': det,
+                                 'size': size}
 
-    # read dets
+    # read dets, detections
     detfile = detpath.format(classname)
     with open(detfile, 'r') as f:
         lines = f.readlines()
@@ -142,98 +331,165 @@ def voc_eval(detpath,
     confidence = np.array([float(x[1]) for x in splitlines])
     BB = np.array([[float(z) for z in x[2:]] for x in splitlines])
 
-    # sort by confidence
-    sorted_ind = np.argsort(-confidence)
-    sorted_scores = np.sort(-confidence)
-    BB = BB[sorted_ind, :]
-    image_ids = [image_ids[x] for x in sorted_ind]
+    # todo, don't need sort, but I need the threshold, sort by confidence, no need to sort, instead, we need the
+    # go down dets and mark TPs and FPs, 这里是全部的长度，是4952 * 147 ， 但是我要的是 4952 * 49, check for each class
 
-    # go down dets and mark TPs and FPs
     nd = len(image_ids)
-    tp = np.zeros(nd)
-    fp = np.zeros(nd)
-    for d in range(nd):
-        R = class_recs[image_ids[d]]
-        bb = BB[d, :].astype(float)
-        ovmax = -np.inf
+    tp = np.zeros(len(imagenames)*49)
+    fp = np.zeros(len(imagenames)*49)
+
+    gt = np.zeros(len(imagenames) * 49)
+    prid = np.zeros(len(imagenames) * 49)
+    for i, imagename in enumerate(imagenames):
+        R = class_recs[imagename]
         BBGT = R['bbox'].astype(float)
+        size = R['size']
+        difficult = R['difficult']
+        for k, bbgt in enumerate(BBGT):
+            grid = get_grid_number(size[0], bbgt, imagename)
+            if ~difficult[k]:
+                gt[i*49+grid] = 1
 
-        if BBGT.size > 0:
-            # compute overlaps
-            # intersection
-            ixmin = np.maximum(BBGT[:, 0], bb[0])
-            iymin = np.maximum(BBGT[:, 1], bb[1])
-            ixmax = np.minimum(BBGT[:, 2], bb[2])
-            iymax = np.minimum(BBGT[:, 3], bb[3])
-            iw = np.maximum(ixmax - ixmin + 1., 0.)
-            ih = np.maximum(iymax - iymin + 1., 0.)
-            inters = iw * ih
+        for k, name in enumerate(image_ids):
+            if name == imagename:
+                grid = get_grid_number(parse_size(annopath.format(name)), BB.tolist()[k], name)
+                prid[i*49 + grid]  = 1
 
-            # union
-            uni = ((bb[2] - bb[0] + 1.) * (bb[3] - bb[1] + 1.) +
-                   (BBGT[:, 2] - BBGT[:, 0] + 1.) *
-                   (BBGT[:, 3] - BBGT[:, 1] + 1.) - inters)
+    tp[np.where(prid + gt == 2)[0]] = 1
+    fp[np.where(prid - gt == 1)[0]] = 1
 
-            overlaps = inters / uni
-            ovmax = np.max(overlaps)
-            jmax = np.argmax(overlaps)
+    recs = [np.sum(tp)/np.sum(gt)]
+    precs = [np.sum(tp)/(np.sum(tp) + np.sum(fp))]
 
-        if ovmax > ovthresh:
-            if not R['difficult'][jmax]:
-                if not R['det'][jmax]:
-                    tp[d] = 1.
-                    R['det'][jmax] = 1
-                else:
-                    fp[d] = 1.
-        else:
-            fp[d] = 1.
+    tpsum = [np.sum(tp)]
+    fpsum = [np.sum(fp)]
+    gtsum = [np.sum(gt)]
 
-    # fps = []
-    # tps = []
-    # indexs = []
-    # for index ,thresh in enumerate(np.arange(0.99, -0.01, -0.01)):
-    #     fps.append(0.0)
-    #     tps.append(0.0)
-    #     # indexs.append(index)
+
+    return recs, precs, tpsum, fpsum, gtsum
+
+
+def voc_eval_multi_label(detpath,
+                   annopath,
+                   imagesetfile,
+                   classname,
+                   cachedir,
+                   ovthresh=0.5,
+                   use_07_metric=False):
+    """rec, prec, ap = voc_eval(detpath,
+                                annopath,
+                                imagesetfile,
+                                classname,
+                                [ovthresh],
+                                [use_07_metric])
+
+    Top level function that does the PASCAL VOC evaluation.
+
+    detpath: Path to detections
+        detpath.format(classname) should produce the detection results_nis3 file.
+    annopath: Path to annotations
+        annopath.format(imagename) should be the xml annotations file.
+    imagesetfile: Text file containing the list of images, one image per line.
+    classname: Category name (duh)
+    cachedir: Directory for caching the annotations
+    [ovthresh]: Overlap threshold (default = 0.5)
+    [use_07_metric]: Whether to use VOC07's 11 point AP computation
+        (default False)
+    """
+    # assumes detections are in detpath.format(classname)
+    # assumes annotations are in annopath.format(imagename)
+    # assumes imagesetfile is a text file with each line an image name
+    # cachedir caches the annotations in a pickle file
+
+    # first load gt
+    if not os.path.isdir(cachedir):
+        os.mkdir(cachedir)
+    cachefile = os.path.join(cachedir, 'annots_with_size.pkl')
+    # read list of images
+    with open(imagesetfile, 'r') as f:
+        lines = f.readlines()
+    imagenames = [x.strip() for x in lines]
+
+    if not os.path.isfile(cachefile):
+        # load annots
+        recs = {}
+        for i, imagename in enumerate(imagenames):
+            recs[imagename] = parse_rec(annopath.format(imagename))
+            if i % 100 == 0:
+                print('Reading annotation for {:d}/{:d}'.format(
+                    i + 1, len(imagenames)))
+        # save
+        print('Saving cached annotations to {:s}'.format(cachefile))
+        with open(cachefile, 'wb') as f:
+            cPickle.dump(recs, f)
+
+    else:
+        # load
+        with open(cachefile, 'rb') as f:
+            recs = cPickle.load(f)
     #
-    #
-    # for index ,thresh in enumerate(np.arange(0.99, -0.01, -0.01)):
-    #     current = 0
-    #     for i in sorted_ind:
-    #         # I need to cumulate the sum from the firs t value to
-    #         # handle thresh 0.99 seperately
-    #         if confidence[i] >= 0.99 and thresh == 0.99:
-    #             # print("confident[{}]: {}".format(i, confidence[i]))
-    #             fps[index] += fp[current]
-    #             tps[index] += tp[current]
-    #
-    #         elif(confidence[i] >= thresh and confidence[i] < thresh + 0.01):
-    #             # print("confident[{}]: {}".format(i, confidence[i]))
-    #             fps[index] += fp[current]
-    #             tps[index] += tp[current]
-    #
-    #
-    #         current += 1
+    # extract gt objects for this class
+    class_recs = {}
+    npos = 0
+    for imagename in imagenames:
+        R = [obj for obj in recs[imagename] if obj['name'] == classname]
+        bbox = np.array([x['bbox'] for x in R])
+        difficult = np.array([x['difficult'] for x in R]).astype(np.bool)
+        det = [False] * len(R)
+        size = np.array([x['size'] for x in R])
+        npos = npos + sum(~difficult)
+        class_recs[imagename] = {'bbox': bbox,
+                                 'difficult': difficult,
+                                 'det': det,
+                                 'size': size}
 
-    # compute precision recall
-    # fp = np.cumsum(fp)
-    # tp = np.cumsum(tp)
+    # read dets, detections
+    detfile = detpath.format(classname)
+    with open(detfile, 'r') as f:
+        lines = f.readlines()
 
-    # fps = np.cumsum(fps)
-    # tps = np.cumsum(tps)
-    # recs = tps / float(npos)
-    # precs = tps / np.maximum(tps + fps, np.finfo(np.float64).eps)
+    splitlines = [x.strip().split(' ') for x in lines]
+    image_ids = [x[0] for x in splitlines]
+    confidence = np.array([float(x[1]) for x in splitlines])
+    BB = np.array([[float(z) for z in x[2:]] for x in splitlines])
 
-    #change this will be fine, the fp, tp can be modified
-    #
-    rec = tp / float(npos)
-    # avoid divide by zero in case the first detection matches a difficult
-    # ground truth
-    prec = tp / np.maximum(tp + fp, np.finfo(np.float64).eps)
+    # todo, don't need sort, but I need the threshold, sort by confidence, no need to sort, instead, we need the
+    # go down dets and mark TPs and FPs, 这里是全部的长度，是4952 * 147 ， 但是我要的是 4952 * 49, check for each class
 
-    ap = voc_ap(rec, prec, use_07_metric)
+    nd = len(image_ids)
+    tp = np.zeros(len(imagenames))
+    fp = np.zeros(len(imagenames))
 
-    fp_sum = np.sum(fp)
-    tp_sum = np.sum(tp)
+    gt = np.zeros(len(imagenames))
+    prid = np.zeros(len(imagenames))
+    for i, imagename in enumerate(imagenames):
+        R = class_recs[imagename]
+        BBGT = R['bbox'].astype(float)
+        size = R['size']
+        difficult = R['difficult']
+        for k, bbgt in enumerate(BBGT):
+            grid = get_grid_number(size[0], bbgt, imagename)
+            if ~difficult[k]:
+                gt[i] = 1
 
-    return tp_sum, fp_sum, npos
+        for k, name in enumerate(image_ids):
+            if name == imagename:
+                grid = get_grid_number(parse_size(annopath.format(name)), BB.tolist()[k], name)
+                prid[i]  = 1
+
+    tp[np.where(prid + gt == 2)[0]] = 1
+    fp[np.where(prid - gt == 1)[0]] = 1
+
+    recs = [np.sum(tp)/np.sum(gt)]
+    precs = [np.sum(tp)/(np.sum(tp) + np.sum(fp))]
+
+    tpsum = [np.sum(tp)]
+    fpsum = [np.sum(fp)]
+    gtsum = [np.sum(gt)]
+
+
+    return recs, precs, tpsum, fpsum, gtsum
+
+if __name__ == '__main__':
+    grid = get_grid_number([500,272], [275.988495, 122.221786, 346.787140, 155.914566], "000067")
+    print(grid)

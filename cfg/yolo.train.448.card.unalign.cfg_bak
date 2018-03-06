@@ -10,11 +10,11 @@ saturation=1.5
 exposure=1.5
 hue=.1
 
-learning_rate=0.005
+learning_rate=0.0005
 policy=steps
 steps=200,400,600,20000,30000
 scales=2.5,2,2,.1,.1
-max_batches = 200000
+max_batches = 140000
 
 [convolutional]
 batch_normalize=1

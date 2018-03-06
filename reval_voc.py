@@ -13,7 +13,10 @@
 
 import os, sys, argparse
 import numpy as np
-import _pickle as cPickle
+if sys.version_info[0] < 3:
+    import cPickle
+else:
+    import _pickle as cPickle
 import matplotlib
 
 from voc_eval import voc_eval
@@ -22,8 +25,8 @@ def parse_args():
     """
     Parse input arguments
     """
-    parser = argparse.ArgumentParser(description='Re-evaluate results')
-    parser.add_argument('output_dir', nargs=1, help='results directory',
+    parser = argparse.ArgumentParser(description='Re-evaluate results_nis3')
+    parser.add_argument('output_dir', nargs=1, help='results_nis3 directory',
                         type=str)
     parser.add_argument('--gt', dest="gt_dir", default=None, type=str)
     parser.add_argument('--cardi', dest="cardi_dir", default=None, type=str)
@@ -40,7 +43,7 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-def get_voc_results_file_template(image_set, out_dir = 'results'):
+def get_voc_results_file_template(image_set, out_dir = 'results_nis3'):
     filename = 'comp4_det_' + image_set + '_{:s}.txt'
     path = os.path.join(out_dir, filename)
     return path
@@ -121,7 +124,7 @@ def do_python_eval(devkit_path, year, image_set, classes, output_dir, gt_dir=Fal
         if cls == '__background__':
             continue
         filename = get_voc_results_file_template(image_set, output_dir).format(cls)
-        tps, fps, npos, ap = voc_eval(filename, annopath, imagesetfile, cls, cachedir, ovthresh=0.5,use_07_metric=use_07_metric)
+        tps, fps, npos, ap = voc_eval(filename, annopath, imagesetfile, cls, cachedir, ovthresh=0.5, use_07_metric=use_07_metric)
         if gt_dir:
             gt_dir = os.path.abspath(gt_dir)
             gt_filename = get_voc_results_file_template(image_set, gt_dir).format(cls)

@@ -17,7 +17,6 @@ void get_detection_boxes_and_cardinality_align(layer l, int w, int h, float thre
 void get_detection_boxes_and_cardinality_unalign(layer l, int w, int h, float thresh, float **probs, box *boxes,
                                                int only_objectness, float *cardinalities);
 
-
 #ifdef GPU
 void forward_detection_layer_gpu(const detection_layer l, network_state state);
 void backward_detection_layer_gpu(detection_layer l, network_state state);
