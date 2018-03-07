@@ -1,0 +1,6 @@
+classes=10
+train  = /Users/qianminming/data/cifar/train.list
+valid  = /Users/qianminming/data/cifar/test.list
+labels = /Users/qianminming/data/cifar/labels.txt
+backup = backup/
+top=2

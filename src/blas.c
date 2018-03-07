@@ -198,3 +198,10 @@ void softmax(float *input, int n, float temp, float *output)
     }
 }
 
+void sigmoid(float *input, int n, float *output){
+    int i;
+    for (i = 0; i < n; ++i) {
+        output[i] = 1 / (1 + exp(-input[i]));
+    }
+}
+

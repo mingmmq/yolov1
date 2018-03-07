@@ -28,7 +28,7 @@ typedef struct{
 } data;
 
 typedef enum {
-    CLASSIFICATION_DATA, DETECTION_DATA, CAPTCHA_DATA, REGION_DATA, IMAGE_DATA, COMPARE_DATA, WRITING_DATA, SWAG_DATA, TAG_DATA, OLD_CLASSIFICATION_DATA, STUDY_DATA, DET_DATA, SUPER_DATA
+    CLASSIFICATION_DATA, DETECTION_DATA, CAPTCHA_DATA, REGION_DATA, IMAGE_DATA, COMPARE_DATA, WRITING_DATA, SWAG_DATA, TAG_DATA, OLD_CLASSIFICATION_DATA, STUDY_DATA, DET_DATA, SUPER_DATA,CLASSIFICATION_MULTILABEL
 } data_type;
 
 typedef struct load_args{
@@ -106,5 +106,8 @@ data *split_data(data d, int part, int total);
 data concat_data(data d1, data d2);
 data concat_datas(data *d, int n);
 void fill_truth(char *path, char **labels, int k, float *truth);
+void fill_truth_voc(char *path, int classes, float *truth);
+matrix load_voc_labels_paths(char **paths, int n, int classes);
+data load_data_voc_multilabel(char **paths, int n, int m, int classes,int min, int max, int size, float angle, float aspect, float hue, float saturation, float exposure);
 
 #endif

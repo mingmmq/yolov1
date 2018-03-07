@@ -271,6 +271,7 @@ float train_network(network net, data d)
     int i;
     float sum = 0;
     for(i = 0; i < n; ++i){
+//        printf("n is %d", n);
         get_next_batch(d, batch, i*batch, X, y);
         float err = train_network_datum(net, X, y);
         sum += err;

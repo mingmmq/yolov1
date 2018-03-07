@@ -34,6 +34,7 @@ typedef enum {
     XNOR,
     REGION,
     REORG,
+    SIGMOID,
     BLANK
 } LAYER_TYPE;
 

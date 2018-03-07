@@ -765,3 +765,25 @@ extern "C" void softmax_gpu(float *input, int n, int offset, int groups, float t
     softmax_kernel<<<cuda_gridsize(batch), BLOCK>>>(inputs, offset, batch, input, temp, output);
     check_error(cudaPeekAtLastError());
 }
+
+__device__ void sigmoid_device(int n, float *input, float *output) {
+    int i;
+    for (i = 0; i < n; ++i) {
+        output[i] = 1 / (1 + exp(-input[i]));
+    }
+}
+
+__global__ void sigmoid_kernel(int n, int offset, int batch, float *input, float *output){
+    int b = (blockIdx.x + blockIdx.y*gridDim.x) * blockDim.x + threadIdx.x;
+    if(b >= batch) return;
+    sigmoid_device(n, input + b * offset, output + b * offset);
+}
+
+extern  "C" void sigmoid_gpu(float *input, int n, int offset, int batch, float *output) {
+    int inputs = n;
+    sigmoid_kernel<<<cuda_gridsize(batch), BLOCK>>>(inputs, offset, batch, input, output);
+    check_error(cudaPeekAtLastError());
+}
+
+
+

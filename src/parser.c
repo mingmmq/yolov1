@@ -28,6 +28,7 @@
 #include "route_layer.h"
 #include "shortcut_layer.h"
 #include "softmax_layer.h"
+#include "sigmoid_layer.h"
 #include "utils.h"
 
 typedef struct{
@@ -68,6 +69,7 @@ LAYER_TYPE string_to_layer_type(char * type)
     if (strcmp(type, "[soft]")==0
             || strcmp(type, "[softmax]")==0) return SOFTMAX;
     if (strcmp(type, "[route]")==0) return ROUTE;
+    if (strcmp(type, "[sigmoid]") == 0) return SIGMOID;
     return BLANK;
 }
 
@@ -229,6 +231,11 @@ softmax_layer parse_softmax(list *options, size_params params)
     layer.temperature = option_find_float_quiet(options, "temperature", 1);
     char *tree_file = option_find_str(options, "tree", 0);
     if (tree_file) layer.softmax_tree = read_tree(tree_file);
+    return layer;
+}
+
+sigmoid_layer parse_sigmoid(list *options, size_params params) {
+    sigmoid_layer layer = make_sigmoid_layer(params.batch, params.inputs);
     return layer;
 }
 
@@ -649,6 +656,8 @@ network parse_network_cfg(char *filename)
         }else if(lt == SOFTMAX){
             l = parse_softmax(options, params);
             net.hierarchy = l.softmax_tree;
+        }else if(lt == SIGMOID){
+            l = parse_sigmoid(options, params);
         }else if(lt == NORMALIZATION){
             l = parse_normalization(options, params);
         }else if(lt == BATCHNORM){
@@ -681,6 +690,7 @@ network parse_network_cfg(char *filename)
         if (l.workspace_size > workspace_size) workspace_size = l.workspace_size;
         free_section(s);
         n = n->next;
+        printf("finish %d\n", count);
         ++count;
         if(n){
             params.h = l.out_h;
@@ -688,12 +698,15 @@ network parse_network_cfg(char *filename)
             params.c = l.out_c;
             params.inputs = l.outputs;
         }
-    }   
+    }
+    printf("finish\n");
     free_list(sections);
     net.outputs = get_network_output_size(net);
+    printf("after get outputs\n");
     net.output = get_network_output(net);
+    printf("after get output\n");
     if(workspace_size){
-        //printf("%ld\n", workspace_size);
+        printf("%ld\n", workspace_size);
 #ifdef GPU
         if(gpu_index >= 0){
             net.workspace = cuda_make_array(0, (workspace_size-1)/sizeof(float)+1);
@@ -1032,6 +1045,7 @@ void load_weights_upto(network *net, char *filename, int cutoff)
 
     int i;
     for(i = 0; i < net->n && i < cutoff; ++i){
+        printf("layer %d\n", i);
         layer l = net->layers[i];
         if (l.dontload) continue;
         if(l.type == CONVOLUTIONAL){
@@ -1079,6 +1093,7 @@ void load_weights_upto(network *net, char *filename, int cutoff)
 
 void load_weights(network *net, char *filename)
 {
+    printf("loading weigths now \n");
     load_weights_upto(net, filename, net->n);
 }
 

@@ -111,6 +111,8 @@ matrix load_image_augment_paths(char **paths, int n, int min, int max, int size,
     X.cols = 0;
 
     for(i = 0; i < n; ++i){
+//        printf("path: %s \n",paths[i]);
+
         image im = load_image_color(paths[i], 0, 0);
         image crop = random_augment_image(im, angle, aspect, min, max, size);
         int flip = rand()%2;
@@ -382,12 +384,48 @@ data load_data_captcha_encode(char **paths, int n, int m, int w, int h)
     return d;
 }
 
+//find the label path through the file path
+void fill_truth_voc(char *path, int classes, float *truth) {
+    char labelpath[4096];
+    find_replace(path, "images", "labels", labelpath);
+    find_replace(labelpath, "JPEGImages", "labels", labelpath);
+
+    find_replace(labelpath, ".jpg", ".txt", labelpath);
+    find_replace(labelpath, ".png", ".txt", labelpath);
+    find_replace(labelpath, ".JPG", ".txt", labelpath);
+    find_replace(labelpath, ".JPEG", ".txt", labelpath);
+
+    int count = 0;
+    box_label *boxes = read_boxes(labelpath, &count);
+    randomize_boxes(boxes, count);
+    float x,y,w,h;
+    int id;
+    int i;
+
+    for (i = 0; i < count; ++i) {
+        id = boxes[i].id;
+        if (id < classes) truth[id] = 1;
+    }
+
+//    int j;
+//    printf("\n%s \n", path);
+//    for (j = 0; j < classes; ++j) {
+//        printf("%.0f ", truth[j]);
+//    }
+//    printf("\n");
+    free(boxes);
+
+}
+
 void fill_truth(char *path, char **labels, int k, float *truth)
 {
     int i;
     memset(truth, 0, k*sizeof(float));
     int count = 0;
+    //说明这里假设了存在label, 这是cifar，label标记在图片的路径上的
+//    printf("\n%s \n", path);
     for(i = 0; i < k; ++i){
+//        printf("%s ", labels[i]);
         if(strstr(path, labels[i])){
             truth[i] = 1;
             ++count;
@@ -426,6 +464,16 @@ void fill_hierarchy(float *truth, int k, tree *hierarchy)
         }
         count += hierarchy->group_size[j];
     }
+}
+
+matrix load_voc_labels_paths(char **paths, int n, int classes) {
+    matrix y = make_matrix(n, classes);
+    int i;
+    for(i = 0; i < n; ++i){
+        fill_truth_voc(paths[i], classes, y.vals[i]);
+    }
+
+    return y;
 }
 
 matrix load_labels_paths(char **paths, int n, char **labels, int k, tree *hierarchy)
@@ -724,6 +772,8 @@ void *load_thread(void *ptr)
         *a.d = load_data_old(a.paths, a.n, a.m, a.labels, a.classes, a.w, a.h);
     } else if (a.type == CLASSIFICATION_DATA){
         *a.d = load_data_augment(a.paths, a.n, a.m, a.labels, a.classes, a.hierarchy, a.min, a.max, a.size, a.angle, a.aspect, a.hue, a.saturation, a.exposure);
+    } else if (a.type == CLASSIFICATION_MULTILABEL){
+        *a.d = load_data_voc_multilabel(a.paths, a.n, a.m, a.classes, a.min, a.max, a.size, a.angle, a.aspect, a.hue, a.saturation, a.exposure);
     } else if (a.type == SUPER_DATA){
         *a.d = load_data_super(a.paths, a.n, a.m, a.w, a.h, a.scale);
     } else if (a.type == WRITING_DATA){
@@ -859,6 +909,16 @@ data load_data_super(char **paths, int n, int m, int w, int h, int scale)
         free_image(im);
     }
 
+    if(m) free(paths);
+    return d;
+}
+
+data load_data_voc_multilabel(char **paths, int n, int m, int classes,int min, int max, int size, float angle, float aspect, float hue, float saturation, float exposure) {
+    if(m) paths = get_random_paths(paths, n, m);
+    data d = {0};
+    d.shallow = 0;
+    d.X = load_image_augment_paths(paths, n, min, max, size, angle, aspect, hue, saturation, exposure);
+    d.y = load_voc_labels_paths(paths, n, classes);
     if(m) free(paths);
     return d;
 }

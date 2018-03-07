@@ -1,0 +1,5 @@
+classes=20
+train  = /Users/qianminming/data/pascal/train.txt
+valid  = /Users/qianminming/data/cifar/2007_test.txt
+labels = data/voc.names
+backup = backup/
