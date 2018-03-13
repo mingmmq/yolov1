@@ -14,6 +14,99 @@
 char *voc_names[] = {"aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow",
                      "diningtable", "dog", "horse", "motorbike", "person", "pottedplant", "sheep", "sofa", "train", "tvmonitor"};
 
+void generate_instance_distribution(char *cfgfile, char *weightfile) {
+    char *train_images = "data/voc.2007.test";
+
+    srand(time(0));
+    char *base = basecfg(cfgfile);
+    printf("%s\n", base);
+    network net = parse_network_cfg(cfgfile);
+    if (weightfile) {
+        load_weights(&net, weightfile);
+    }
+    printf("Learning Rate: %g, Momentum: %g, Decay: %g\n", net.learning_rate, net.momentum, net.decay);
+    int imgs = net.batch * net.subdivisions;
+    int i = *net.seen / imgs;
+    data train, buffer;
+
+
+    layer l = net.layers[net.n - 1];
+
+    int side = l.side;
+    int classes = l.classes;
+    float jitter = l.jitter;
+
+    list *plist = get_paths(train_images);
+    int N = plist->size;        //get the size of all the files
+    char **paths = (char **) list_to_array(plist);
+    float *instance_distribution = calloc(100, sizeof(float));
+
+    load_args args = {0};
+    args.w = net.w;
+    args.h = net.h;
+    args.paths = paths;
+    args.n = imgs;
+    args.m = plist->size;
+    args.classes = classes;
+    args.jitter = jitter;
+    args.num_boxes = side;
+    args.d = &buffer;
+    args.type = REGION_DATA_NOT_RANDOM;
+
+    args.angle = net.angle;
+    args.exposure = net.exposure;
+    args.saturation = net.saturation;
+    args.hue = net.hue;
+
+    //start new thread to load all th data
+//    pthread_t load_thread = load_data_in_thread(args);
+
+    data d;
+    load_args a = args;
+    while (i < N) {
+//        char *path = "/home/qhu/minming/data/pascal/VOCdevkit/VOC2012/JPEGImages/2008_004923.jpg";
+        d = load_data_region_not_random(a.n, a.paths, a.m, a.w, a.h, a.num_boxes, a.classes, a.jitter, a.hue, a.saturation, a.exposure);
+
+        printf("%s\n", a.paths[0]);
+        int j;
+        for (j = 0; j < d.X.rows; ++j) {
+            int col;
+            int row;
+            int instance_count = 0;
+            for (row = 0; row < a.num_boxes; ++row) {
+                for (col = 0; col < a.num_boxes; ++col) {
+                    int index = (col+row*a.num_boxes)*(5+classes);
+//                    printf("row:%d, col:%d, index:%d\n", row, col, index);
+//                    int k;
+//                    for (k = 0; k < a.classes + 1; ++k) {
+//                        printf("\t%.2f", d.y.vals[j][index + k]);
+//                    }
+//                    printf("\n");
+                    //index代表的每个格子，是说这个格子里面有没有object，后面还有20个class，表示是哪个类别，还有4个表示参数的
+                    instance_count += d.y.vals[j][index];
+                }
+
+            }
+            printf("instance_count: %d", instance_count);
+            instance_distribution[instance_count] += 1;
+            printf("\n");
+        }
+
+        a.paths += args.n;
+        i += 1;
+
+//        printf("Loaded: %lf seconds\n", sec(clock() - time));
+        free_data(d);
+    }
+
+    int m;
+    for (m = 0; m < 100; ++m) {
+        printf("%2.0f, ", instance_distribution[m]);
+    }
+    printf("\n");
+    
+}
+
 void train_yolo(char *cfgfile, char *weightfile, int backup)
 {
     char *train_images = "data/voc.train";
@@ -84,7 +177,8 @@ void train_yolo(char *cfgfile, char *weightfile, int backup)
         //waiting for the loading thread, then continue
         pthread_join(load_thread, 0);
         train = buffer;
-        load_thread = load_data_in_thread(args);    //在计算的时候，又用thread重新再load了
+        load_thread = load_data_in_thread(args);
+        //在计算的时候，又用thread重新再load了, 下面的代码是跟着上一个线程，计算和load图片是并行的进行的，加速
 
         printf("Loaded: %lf seconds\n", sec(clock()-time));
 
@@ -1326,5 +1420,6 @@ void run_yolo(int argc, char **argv)
     else if(0==strcmp(argv[2], "cardi")) validate_yolo_print_cardi(cfg, weights);
     else if(0==strcmp(argv[2], "valid_gt")) validate_yolo_cardi_gt(cfg, weights);
     else if(0==strcmp(argv[2], "verify")) validate_yolo_cardi_verify(cfg, weights);
+    else if(0==strcmp(argv[2], "distribution")) generate_instance_distribution(cfg, weights);
     else if(0==strcmp(argv[2], "demo")) demo(cfg, weights, thresh, cam_index, filename, voc_names, 20, frame_skip, prefix);
 }

@@ -81,6 +81,8 @@ void forward_cost_layer(cost_layer l, network_state state)
     }
     if(l.cost_type == SMOOTH){
         smooth_l1_cpu(l.batch*l.inputs, state.input, state.truth, l.delta, l.output);
+//    if(l.cost_type == BCE){
+//        bce_cpu(l.batch * l.inputs, state.input, state.truth, l.delta, l.output);
     } else {
         l2_cpu(l.batch*l.inputs, state.input, state.truth, l.delta, l.output);
     }

@@ -690,7 +690,6 @@ network parse_network_cfg(char *filename)
         if (l.workspace_size > workspace_size) workspace_size = l.workspace_size;
         free_section(s);
         n = n->next;
-        printf("finish %d\n", count);
         ++count;
         if(n){
             params.h = l.out_h;
@@ -699,7 +698,6 @@ network parse_network_cfg(char *filename)
             params.inputs = l.outputs;
         }
     }
-    printf("finish\n");
     free_list(sections);
     net.outputs = get_network_output_size(net);
     printf("after get outputs\n");

@@ -28,7 +28,7 @@ typedef struct{
 } data;
 
 typedef enum {
-    CLASSIFICATION_DATA, DETECTION_DATA, CAPTCHA_DATA, REGION_DATA, IMAGE_DATA, COMPARE_DATA, WRITING_DATA, SWAG_DATA, TAG_DATA, OLD_CLASSIFICATION_DATA, STUDY_DATA, DET_DATA, SUPER_DATA,CLASSIFICATION_MULTILABEL
+    CLASSIFICATION_DATA, DETECTION_DATA, CAPTCHA_DATA, REGION_DATA, IMAGE_DATA, COMPARE_DATA, WRITING_DATA, SWAG_DATA, TAG_DATA, OLD_CLASSIFICATION_DATA, STUDY_DATA, DET_DATA, SUPER_DATA,CLASSIFICATION_MULTILABEL,CLASSIFICATION_MULTILABEL_TEST,REGION_DATA_NOT_RANDOM,
 } data_type;
 
 typedef struct load_args{
@@ -109,5 +109,8 @@ void fill_truth(char *path, char **labels, int k, float *truth);
 void fill_truth_voc(char *path, int classes, float *truth);
 matrix load_voc_labels_paths(char **paths, int n, int classes);
 data load_data_voc_multilabel(char **paths, int n, int m, int classes,int min, int max, int size, float angle, float aspect, float hue, float saturation, float exposure);
+data load_data_multilabel_test(char **paths, int n, int m, char **labels, int k, int w, int h);
+data load_data_region_not_random(int n, char **paths, int m, int w, int h, int size, int classes, float jitter, float hue, float saturation, float exposure);
+void *load_thread(void *ptr);
 
 #endif

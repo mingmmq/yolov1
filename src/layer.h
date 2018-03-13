@@ -39,7 +39,7 @@ typedef enum {
 } LAYER_TYPE;
 
 typedef enum{
-    SSE, MASKED, SMOOTH
+    SSE, MASKED, SMOOTH, BCE
 } COST_TYPE;
 
 struct layer{

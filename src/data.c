@@ -132,6 +132,7 @@ matrix load_image_augment_paths(char **paths, int n, int min, int max, int size,
 }
 
 
+//生成label的时候不可能去掉重复的，因为还不知道用13*13还是7*7的进行测试呢
 box_label *read_boxes(char *filename, int *n)
 {
     box_label *boxes = calloc(1, sizeof(box_label));
@@ -274,6 +275,7 @@ void fill_truth_region(char *path, float *truth, int classes, int num_boxes, int
         int col = (int)(x*num_boxes);
         int row = (int)(y*num_boxes);
 
+        //这是在那个格子里面的位置
         x = x*num_boxes - col;
         y = y*num_boxes - row;
 
@@ -326,6 +328,55 @@ void fill_truth_detection(char *path, int num_boxes, float *truth, int classes, 
         truth[i*5+2] = w;
         truth[i*5+3] = h;
         truth[i*5+4] = id;
+    }
+    free(boxes);
+}
+
+void fill_truth_region_no_random_box(char *path, float *truth, int classes, int num_boxes, int flip, float dx, float dy, float sx, float sy)
+{
+    char labelpath[4096];
+    find_replace(path, "images", "labels", labelpath);
+    find_replace(labelpath, "JPEGImages", "labels", labelpath);
+
+    find_replace(labelpath, ".jpg", ".txt", labelpath);
+    find_replace(labelpath, ".png", ".txt", labelpath);
+    find_replace(labelpath, ".JPG", ".txt", labelpath);
+    find_replace(labelpath, ".JPEG", ".txt", labelpath);
+    int count = 0;
+    box_label *boxes = read_boxes(labelpath, &count);
+//    randomize_boxes(boxes, count);
+//    correct_boxes(boxes, count, dx, dy, sx, sy, flip);
+    float x,y,w,h;
+    int id;
+    int i;
+
+    for (i = 0; i < count; ++i) {
+        x =  boxes[i].x;
+        y =  boxes[i].y;
+        w =  boxes[i].w;
+        h =  boxes[i].h;
+        id = boxes[i].id;
+
+        if (w < .01 || h < .01) continue;
+
+        int col = (int)(x*num_boxes);
+        int row = (int)(y*num_boxes);
+
+        //这是在那个格子里面的位置
+        x = x*num_boxes - col;
+        y = y*num_boxes - row;
+
+        int index = (col+row*num_boxes)*(5+classes);
+        if (truth[index]) continue;
+        truth[index++] = 1;
+
+        if (id < classes) truth[index+id] = 1;
+        index += classes;
+
+        truth[index++] = x;
+        truth[index++] = y;
+        truth[index++] = w;
+        truth[index++] = h;
     }
     free(boxes);
 }
@@ -398,19 +449,23 @@ void fill_truth_voc(char *path, int classes, float *truth) {
     int count = 0;
     box_label *boxes = read_boxes(labelpath, &count);
     randomize_boxes(boxes, count);
-    float x,y,w,h;
     int id;
     int i;
+
+//    int j;
+//    printf("\n%s \n", path);
+//    for (j = 0; j < classes; ++j) {
+//        printf("%.1f ", truth[j]);
+//    }
 
     for (i = 0; i < count; ++i) {
         id = boxes[i].id;
         if (id < classes) truth[id] = 1;
     }
 
-//    int j;
 //    printf("\n%s \n", path);
 //    for (j = 0; j < classes; ++j) {
-//        printf("%.0f ", truth[j]);
+//        printf("%.1f ", truth[j]);
 //    }
 //    printf("\n");
     free(boxes);
@@ -534,6 +589,58 @@ void free_data(data d)
         free(d.X.vals);
         free(d.y.vals);
     }
+}
+
+data load_data_region_not_random(int n, char **paths, int m, int w, int h, int size, int classes, float jitter, float hue, float saturation, float exposure)
+{
+    int i;
+    data d = {0};
+    d.shallow = 0;
+
+    d.X.rows = n;
+    d.X.vals = calloc(d.X.rows, sizeof(float*));
+    d.X.cols = h*w*3;
+
+
+    int k = size*size*(5+classes);
+    d.y = make_matrix(n, k);
+    for(i = 0; i < n; ++i){
+        image orig = load_image_color(paths[i], 0, 0);
+
+        int oh = orig.h;
+        int ow = orig.w;
+
+        int dw = (ow*jitter);
+        int dh = (oh*jitter);
+
+        int pleft  = rand_uniform(-dw, dw);
+        int pright = rand_uniform(-dw, dw);
+        int ptop   = rand_uniform(-dh, dh);
+        int pbot   = rand_uniform(-dh, dh);
+
+        int swidth =  ow - pleft - pright;
+        int sheight = oh - ptop - pbot;
+
+        float sx = (float)swidth  / ow;
+        float sy = (float)sheight / oh;
+
+        int flip = rand()%2;
+        image cropped = crop_image(orig, pleft, ptop, swidth, sheight);
+
+        float dx = ((float)pleft/ow)/sx;
+        float dy = ((float)ptop /oh)/sy;
+
+        image sized = resize_image(cropped, w, h);
+        if(flip) flip_image(sized);
+        random_distort_image(sized, hue, saturation, exposure);
+        d.X.vals[i] = sized.data;
+
+        fill_truth_region_no_random_box(paths[i], d.y.vals[i], classes, size, flip, dx, dy, 1./sx, 1./sy);
+
+        free_image(orig);
+        free_image(cropped);
+    }
+    return d;
 }
 
 data load_data_region(int n, char **paths, int m, int w, int h, int size, int classes, float jitter, float hue, float saturation, float exposure)
@@ -768,8 +875,10 @@ void *load_thread(void *ptr)
     if(a.saturation == 0) a.saturation = 1;
     if(a.aspect == 0) a.aspect = 1;
 
-    if (a.type == OLD_CLASSIFICATION_DATA){
+    if (a.type == OLD_CLASSIFICATION_DATA) {
         *a.d = load_data_old(a.paths, a.n, a.m, a.labels, a.classes, a.w, a.h);
+    }else if (a.type == CLASSIFICATION_MULTILABEL_TEST){
+            *a.d = load_data_multilabel_test(a.paths, a.n, a.m, a.labels, a.classes, a.w, a.h);
     } else if (a.type == CLASSIFICATION_DATA){
         *a.d = load_data_augment(a.paths, a.n, a.m, a.labels, a.classes, a.hierarchy, a.min, a.max, a.size, a.angle, a.aspect, a.hue, a.saturation, a.exposure);
     } else if (a.type == CLASSIFICATION_MULTILABEL){
@@ -780,6 +889,8 @@ void *load_thread(void *ptr)
         *a.d = load_data_writing(a.paths, a.n, a.m, a.w, a.h, a.out_w, a.out_h);
     } else if (a.type == REGION_DATA){
         *a.d = load_data_region(a.n, a.paths, a.m, a.w, a.h, a.num_boxes, a.classes, a.jitter, a.hue, a.saturation, a.exposure);
+    } else if (a.type == REGION_DATA_NOT_RANDOM){
+        *a.d = load_data_region_not_random(a.n, a.paths, a.m, a.w, a.h, a.num_boxes, a.classes, a.jitter, a.hue, a.saturation, a.exposure);
     } else if (a.type == DETECTION_DATA){
         *a.d = load_data_detection(a.n, a.paths, a.m, a.w, a.h, a.num_boxes, a.classes, a.jitter, a.hue, a.saturation, a.exposure);
     } else if (a.type == SWAG_DATA){
@@ -865,6 +976,18 @@ data load_data_old(char **paths, int n, int m, char **labels, int k, int w, int 
     d.shallow = 0;
     d.X = load_image_paths(paths, n, w, h);
     d.y = load_labels_paths(paths, n, labels, k, 0);
+    if(m) free(paths);
+    return d;
+}
+
+data load_data_multilabel_test(char **paths, int n, int m, char **labels, int k, int w, int h)
+{
+    if(m) paths = get_random_paths(paths, n, m);
+    data d = {0};
+    d.shallow = 0;
+    d.X = load_image_paths(paths, n, w, h);
+//    d.y = load_labels_paths(paths, n, labels, k, 0);
+    d.y = load_voc_labels_paths(paths, n, k);
     if(m) free(paths);
     return d;
 }

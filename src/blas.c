@@ -172,6 +172,16 @@ void l2_cpu(int n, float *pred, float *truth, float *delta, float *error)
     }
 }
 
+void bce_cpu(int n, float *pred, float *truth, float *delta, float *error)
+{
+    int i;
+    for(i = 0; i < n; ++i){
+        float diff = truth[i] - pred[i];
+        error[i] = diff * diff;
+        delta[i] = diff;
+    }
+}
+
 float dot_cpu(int N, float *X, int INCX, float *Y, int INCY)
 {
     int i;
@@ -201,7 +211,7 @@ void softmax(float *input, int n, float temp, float *output)
 void sigmoid(float *input, int n, float *output){
     int i;
     for (i = 0; i < n; ++i) {
-        output[i] = 1 / (1 + exp(-input[i]));
+        output[i] = (float) (1 / (1 + exp(-input[i])));
     }
 }
 
